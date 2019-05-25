@@ -253,7 +253,9 @@ class Runner(object):
         self.mode = 'train'
         self.data_loader = data_loader
         self._max_iters = self._max_epochs * len(data_loader)
+        self.log_buffer.clear()
         self.call_hook('before_train_epoch')
+
         for i, data_batch in enumerate(data_loader):
             self._inner_iter = i
             self.call_hook('before_train_iter')
@@ -264,6 +266,8 @@ class Runner(object):
             if 'log_vars' in outputs:
                 self.log_buffer.update(outputs['log_vars'],
                                        outputs['num_samples'])
+            if 'batch_acc' in outputs:
+                self.log_buffer.update({'batch_acc':  outputs['batch_acc']})
             self.outputs = outputs
             self.call_hook('after_train_iter')
             self._iter += 1
@@ -275,6 +279,7 @@ class Runner(object):
         self.model.eval()
         self.mode = 'val'
         self.data_loader = data_loader
+        self.log_buffer.clear()
         self.call_hook('before_val_epoch')
 
         for i, data_batch in enumerate(data_loader):
@@ -288,6 +293,8 @@ class Runner(object):
             if 'log_vars' in outputs:
                 self.log_buffer.update(outputs['log_vars'],
                                        outputs['num_samples'])
+            if 'batch_acc' in outputs:
+                self.log_buffer.update({'batch_acc':  outputs['batch_acc']})
             self.outputs = outputs
             self.call_hook('after_val_iter')
 
