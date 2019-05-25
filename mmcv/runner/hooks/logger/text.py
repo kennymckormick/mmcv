@@ -8,7 +8,7 @@ from .base import LoggerHook
 
 class TextLoggerHook(LoggerHook):
 
-    def __init__(self, interval=10, ignore_last=True, reset_flag=False):
+    def __init__(self, interval=10, ignore_last=False, reset_flag=False):
         super(TextLoggerHook, self).__init__(interval, ignore_last, reset_flag)
         self.time_sec_tot = 0
 
@@ -25,7 +25,7 @@ class TextLoggerHook(LoggerHook):
             dist.reduce(mem_mb, 0, op=dist.ReduceOp.MAX)
         return mem_mb
 
-    def log(self, runner):
+    def log(self, runner, mode):
         if runner.mode == 'train':
             lr_str = ', '.join(
                 ['{:.5f}'.format(lr) for lr in runner.current_lr()])
@@ -35,6 +35,9 @@ class TextLoggerHook(LoggerHook):
         else:
             log_str = 'Epoch({}) [{}][{}]\t'.format(runner.mode, runner.epoch,
                                                     runner.inner_iter + 1)
+
+        if mode == 'epoch':
+            log_str = 'Epoch({}) Summary:\t'.format(runner.epoch + 1)
         if 'time' in runner.log_buffer.output:
             self.time_sec_tot += (
                 runner.log_buffer.output['time'] * self.interval)

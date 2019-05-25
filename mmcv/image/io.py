@@ -2,10 +2,11 @@ import os.path as osp
 
 import cv2
 import numpy as np
+import os
 
 from mmcv.utils import is_str, check_file_exist, mkdir_or_exist
 from mmcv.opencv_info import USE_OPENCV2
-
+import mc
 if not USE_OPENCV2:
     from cv2 import IMREAD_COLOR, IMREAD_GRAYSCALE, IMREAD_UNCHANGED
 else:
@@ -33,13 +34,26 @@ def imread(img_or_path, flag='color'):
     Returns:
         ndarray: Loaded image array.
     """
+    USE_MEMCACHED = False
+    if 'USE_MEMCACHED' in os.environ.keys():
+        USE_MEMCACHED = os.environ['USE_MEMCACHED']
+    orig_flag = flag
     if isinstance(img_or_path, np.ndarray):
         return img_or_path
     elif is_str(img_or_path):
         flag = imread_flags[flag] if is_str(flag) else flag
         check_file_exist(img_or_path,
                          'img file does not exist: {}'.format(img_or_path))
-        return cv2.imread(img_or_path, flag)
+        if USE_MEMCACHED:
+            server_list_config_file = "/mnt/lustre/share/memcached_client/server_list.conf"
+            client_config_file = "/mnt/lustre/share/memcached_client/client.conf"
+            mclient = mc.MemcachedClient.GetInstance(server_list_config_file, client_config_file)
+            value = mc.pyvector()
+            mclient.Get(img_or_path, value)
+            value_buf = mc.ConvertBuffer(value)
+            return imfrombytes(value_buf, orig_flag)
+        else:
+            return cv2.imread(img_or_path, flag)
     else:
         raise TypeError('"img" must be a numpy array or a filename')
 

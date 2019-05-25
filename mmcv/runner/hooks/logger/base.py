@@ -15,7 +15,7 @@ class LoggerHook(Hook):
 
     __metaclass__ = ABCMeta
 
-    def __init__(self, interval=10, ignore_last=True, reset_flag=False):
+    def __init__(self, interval=10, ignore_last=False, reset_flag=False):
         self.interval = interval
         self.ignore_last = ignore_last
         self.reset_flag = reset_flag
@@ -41,16 +41,28 @@ class LoggerHook(Hook):
             runner.log_buffer.average(self.interval)
 
         if runner.log_buffer.ready:
-            self.log(runner)
+            self.log(runner, 'iter')
             if self.reset_flag:
                 runner.log_buffer.clear_output()
 
     def after_train_epoch(self, runner):
+        runner.log_buffer.average()
         if runner.log_buffer.ready:
-            self.log(runner)
+            self.log(runner, 'epoch')
 
     def after_val_epoch(self, runner):
         runner.log_buffer.average()
-        self.log(runner)
+        self.log(runner, 'epoch')
         if self.reset_flag:
             runner.log_buffer.clear_output()
+
+    def after_val_iter(self, runner):
+        if self.every_n_inner_iters(runner, self.interval):
+            runner.log_buffer.average(self.interval)
+        elif self.end_of_epoch(runner) and not self.ignore_last:
+            runner.log_buffer.average(self.interval)
+
+        if runner.log_buffer.ready:
+            self.log(runner, 'iter')
+            if self.reset_flag:
+                runner.log_buffer.clear_output()

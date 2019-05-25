@@ -9,7 +9,7 @@ class TensorboardLoggerHook(LoggerHook):
     def __init__(self,
                  log_dir=None,
                  interval=10,
-                 ignore_last=True,
+                 ignore_last=False,
                  reset_flag=True):
         super(TensorboardLoggerHook, self).__init__(interval, ignore_last,
                                                     reset_flag)
@@ -28,11 +28,11 @@ class TensorboardLoggerHook(LoggerHook):
             self.writer = SummaryWriter(self.log_dir)
 
     @master_only
-    def log(self, runner):
+    def log(self, runner, mode):
         for var in runner.log_buffer.output:
             if var in ['time', 'data_time']:
                 continue
-            tag = '{}/{}'.format(var, runner.mode)
+            tag = '{}/{}/{}'.format(var, runner.mode, mode)
             record = runner.log_buffer.output[var]
             if isinstance(record, str):
                 self.writer.add_text(tag, record, runner.iter)
