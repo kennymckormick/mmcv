@@ -34,11 +34,12 @@ class TensorboardLoggerHook(LoggerHook):
                 continue
             tag = '{}/{}/{}'.format(var, runner.mode, mode)
             record = runner.log_buffer.output[var]
+            index =  runner.iter if mode == 'iter' else runner.epoch
             if isinstance(record, str):
-                self.writer.add_text(tag, record, runner.iter)
+                self.writer.add_text(tag, record, index)
             else:
                 self.writer.add_scalar(tag, runner.log_buffer.output[var],
-                                       runner.iter)
+                                       index)
 
     @master_only
     def after_run(self, runner):
