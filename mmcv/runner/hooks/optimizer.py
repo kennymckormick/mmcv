@@ -19,7 +19,7 @@ class OptimizerHook(Hook):
     def after_train_iter(self, runner):
         iter_loss = runner.outputs['loss'] / self.iter_size
         iter_loss.backward()
-        if runner.iter % self.iter_size:
+        if (runner.iter % self.iter_size) == 0:
             if self.grad_clip is not None:
                 self.clip_grads(runner.model.parameters())
 
