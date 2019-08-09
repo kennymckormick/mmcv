@@ -13,6 +13,10 @@ from .checkpoint import load_checkpoint, save_checkpoint
 from .priority import get_priority
 from .utils import get_dist_info, get_host_info, get_time_str, obj_from_dict
 
+# Actually 2 more variables added
+# 1. val_acc: writed by logger_hook, at time after_val_epoch, default value 0
+# 2. should_stop: writed by lr_updater, at time after_val_epoch(like scheduler.step()), default value False
+
 
 class Runner(object):
     """A training helper for PyTorch.
@@ -75,6 +79,10 @@ class Runner(object):
         self._inner_iter = 0
         self._max_epochs = 0
         self._max_iters = 0
+
+        # variable added by haodong
+        self.val_acc = 0.0
+        self.should_stop = False
 
     @property
     def model_name(self):

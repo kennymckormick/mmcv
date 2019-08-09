@@ -33,6 +33,7 @@ class LrUpdaterHook(Hook):
         self.base_lr = []  # initial lr for all param groups
         self.regular_lr = []  # expected lr if no warming up is performed
 
+    # ok
     def _set_lr(self, runner, lr_groups):
         for param_group, lr in zip(runner.optimizer.param_groups, lr_groups):
             param_group['lr'] = lr
@@ -40,6 +41,7 @@ class LrUpdaterHook(Hook):
     def get_lr(self, runner, base_lr):
         raise NotImplementedError
 
+    # ok
     def get_regular_lr(self, runner):
         return [self.get_lr(runner, _base_lr) for _base_lr in self.base_lr]
 
@@ -54,6 +56,7 @@ class LrUpdaterHook(Hook):
             warmup_lr = [_lr * k for _lr in self.regular_lr]
         return warmup_lr
 
+    # ok
     def before_run(self, runner):
         # NOTE: when resuming from a checkpoint, if 'initial_lr' is not saved,
         # it will be set according to the optimizer params
@@ -180,3 +183,27 @@ class CosineLrUpdaterHook(LrUpdaterHook):
             max_progress = runner.max_iters
         return self.target_lr + 0.5 * (base_lr - self.target_lr) * \
             (1 + cos(pi * (progress / max_progress)))
+
+
+class ReduceLROnPlateauLrUpdaterHook(LrUpdaterHook):
+    def __init__(self, tolerance, nstep, gamma, **kwargs):
+        self.tolerance = tolerance
+        self.nstep = nstep
+        self.gamma = gamma
+        self.step_history = []
+        self.decayed_steps = 0
+        super(ReduceLROnPlateauLrUpdaterHook, self).__init__(**kwargs)
+
+    def get_lr(self, runner, base_lr):
+        step_value = runner.val_acc
+        self.step_history.append(step_value)
+        if len(self.step_history) > self.tolerance + 1:
+            max_value = max(self.step_history)
+            recent_max_value = max(self.step_history[-tolerance: ])
+            if recent_max_value < max_value:
+                self.decayed_steps = self.decayed_steps + 1
+                self.step_history = [max_value]
+                runner.logger.info('tolerance exceeded, LR decayed.')
+        if self.decayed_steps > self.nstep:
+            runner.should_stop = True
+        return base_lr * (self.gamma) ** self.decayed_steps
