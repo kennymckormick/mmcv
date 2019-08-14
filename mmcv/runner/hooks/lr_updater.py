@@ -185,25 +185,29 @@ class CosineLrUpdaterHook(LrUpdaterHook):
             (1 + cos(pi * (progress / max_progress)))
 
 
-class ReduceLROnPlateauLrUpdaterHook(LrUpdaterHook):
-    def __init__(self, tolerance, nstep, gamma, **kwargs):
+class PlateauLrUpdaterHook(LrUpdaterHook):
+    def __init__(self, tolerance, nstep, gamma, history, **kwargs):
         self.tolerance = tolerance
         self.nstep = nstep
         self.gamma = gamma
-        self.step_history = []
+        self.step_history = history
         self.decayed_steps = 0
-        super(ReduceLROnPlateauLrUpdaterHook, self).__init__(**kwargs)
+        super(PlateauLrUpdaterHook, self).__init__(**kwargs)
+
 
     def get_lr(self, runner, base_lr):
+        return base_lr * (self.gamma) ** self.decayed_steps
+
+    def after_val_epoch(self, runner):
         step_value = runner.val_acc
         self.step_history.append(step_value)
         if len(self.step_history) > self.tolerance + 1:
             max_value = max(self.step_history)
-            recent_max_value = max(self.step_history[-tolerance: ])
+            recent_max_value = max(self.step_history[-self.tolerance: ])
             if recent_max_value < max_value:
                 self.decayed_steps = self.decayed_steps + 1
                 self.step_history = [max_value]
                 runner.logger.info('tolerance exceeded, LR decayed.')
         if self.decayed_steps > self.nstep:
             runner.should_stop = True
-        return base_lr * (self.gamma) ** self.decayed_steps
+        runner.logger.info('history_step_values: {}, decayed_steps: {}'.format(self.step_history, self.decayed_steps))

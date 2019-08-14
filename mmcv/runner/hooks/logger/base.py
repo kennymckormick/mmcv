@@ -49,14 +49,18 @@ class LoggerHook(Hook):
         runner.log_buffer.average()
         if runner.log_buffer.ready:
             self.log(runner, 'epoch')
+        # haodong mod, for ReduceLROnPlateau support
+        if 'batch_acc' in runner.log_buffer.output:
+            runner.train_acc = runner.log_buffer.output['batch_acc']
 
     def after_val_epoch(self, runner):
         runner.log_buffer.average()
-        self.log(runner, 'epoch')
+        if runner.log_buffer.ready:
+            self.log(runner, 'epoch')
         # haodong mod, for ReduceLROnPlateau support
-        if 'batch_acc' in runner.log_buffer.outputs:
-            runner.val_acc = runner.log_buffer.outputs['batch_acc']
-            
+        if 'batch_acc' in runner.log_buffer.output:
+            runner.val_acc = runner.log_buffer.output['batch_acc']
+
         if self.reset_flag:
             runner.log_buffer.clear_output()
 

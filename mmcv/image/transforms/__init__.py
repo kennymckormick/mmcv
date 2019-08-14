@@ -1,6 +1,6 @@
 from .colorspace import bgr2gray, gray2bgr, bgr2rgb, rgb2bgr, bgr2hsv, hsv2bgr
 from .colorspace import iminvert
-from .geometry import imflip, imrotate, imcrop, impad, impad_to_multiple
+from .geometry import imflip, imrotate, imcrop, impad, impad_to_multiple, impad_center
 from .normalize import imnormalize, imdenormalize
 from .resize import imresize, imresize_like, imrescale
 
@@ -8,5 +8,5 @@ __all__ = [
     'bgr2gray', 'gray2bgr', 'bgr2rgb', 'rgb2bgr', 'bgr2hsv', 'hsv2bgr',
     'imflip', 'imrotate', 'imcrop', 'impad', 'impad_to_multiple',
     'imnormalize', 'imdenormalize', 'imresize', 'imresize_like', 'imrescale',
-    'iminvert'
+    'iminvert', 'impad_center'
 ]

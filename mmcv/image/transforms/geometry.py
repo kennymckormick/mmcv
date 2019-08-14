@@ -186,6 +186,21 @@ def impad(img, shape, pad_val=0):
     pad[:img.shape[0], :img.shape[1], ...] = img
     return pad
 
+def impad_center(img, shape, pad_val=0):
+    if not isinstance(pad_val, (int, float)):
+        assert len(pad_val) == img.shape[-1]
+    if len(shape) < len(img.shape):
+        shape = shape + (img.shape[-1], )
+    assert len(shape) == len(img.shape)
+    for i in range(len(shape) - 1):
+        assert shape[i] >= img.shape[i]
+    pad = np.empty(shape, dtype=img.dtype)
+    pad[...] = pad_val
+    dim0_st = (shape[0] - img.shape[0]) // 2
+    dim1_st = (shape[1] - img.shape[1]) // 2
+    pad[dim0_st : dim0_st + img.shape[0], dim1_st : dim1_st + img.shape[1], ...] = img
+    return pad
+
 
 def impad_to_multiple(img, divisor, pad_val=0):
     """Pad an image to ensure each edge to be multiple to some number.
