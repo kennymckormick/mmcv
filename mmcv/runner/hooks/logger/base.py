@@ -1,6 +1,7 @@
 from abc import ABCMeta, abstractmethod
 
 from ..hook import Hook
+from ...utils import get_dist_info, get_host_info, get_time_str, obj_from_dict
 
 
 class LoggerHook(Hook):
@@ -34,6 +35,8 @@ class LoggerHook(Hook):
         runner.log_buffer.clear()  # clear logs of last epoch
 
     def after_train_iter(self, runner):
+        _rank, _world_size = get_dist_info()
+        # print('my rank is: ', _rank, 'after iteration')
         if self.every_n_inner_iters(runner, self.interval):
             runner.log_buffer.average(self.interval)
         elif self.end_of_epoch(runner) and not self.ignore_last:

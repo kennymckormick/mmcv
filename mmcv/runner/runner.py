@@ -12,6 +12,7 @@ from .hooks import (Hook, LrUpdaterHook, CheckpointHook, IterTimerHook,
 from .checkpoint import load_checkpoint, save_checkpoint
 from .priority import get_priority
 from .utils import get_dist_info, get_host_info, get_time_str, obj_from_dict
+import numpy as np
 
 # Actually 2 more variables added
 # 1. val_acc: writed by logger_hook, at time after_val_epoch, default value 0
@@ -67,6 +68,7 @@ class Runner(object):
 
         self._rank, self._world_size = get_dist_info()
         if logger is None:
+            # print('my rank is ', self._rank, 'my logger is none')
             self.logger = self.init_logger(work_dir, log_level)
         else:
             self.logger = logger
@@ -82,6 +84,7 @@ class Runner(object):
 
         # variable added by haodong
         self.val_acc = 0.0
+        self.train_acc = 0.0
         self.should_stop = False
 
     @property
@@ -264,21 +267,55 @@ class Runner(object):
         self.log_buffer.clear()
         self.call_hook('before_train_epoch')
 
-        for i, data_batch in enumerate(data_loader):
-            self._inner_iter = i
-            self.call_hook('before_train_iter')
-            outputs = self.batch_processor(
-                self.model, data_batch, train_mode=True, **kwargs)
-            if not isinstance(outputs, dict):
-                raise TypeError('batch_processor() must return a dict')
-            if 'log_vars' in outputs:
-                self.log_buffer.update(outputs['log_vars'],
-                                       outputs['num_samples'])
-            if 'batch_acc' in outputs:
-                self.log_buffer.update({'batch_acc':  outputs['batch_acc']})
-            self.outputs = outputs
-            self.call_hook('after_train_iter')
-            self._iter += 1
+
+        if len(data_loader) > 1:
+            main_data_loader = data_loader[0]
+            auxiliary_data_loaders = data_loader[1: ]
+            auxiliary_data_iters = list(map(iter, auxiliary_data_loaders))
+            for i, data_batch in enumerate(main_data_loader):
+                self._inner_iter = i
+                self.call_hook('before_train_iter')
+                outputs = self.batch_processor(
+                    self.model, data, train_mode=True, source='', **kwargs)
+                if not isinstance(outputs, dict):
+                    raise TypeError('batch_processor() must return a dict')
+                if 'log_vars' in outputs:
+                    self.log_buffer.update(outputs['log_vars'], outputs['num_samples'])
+                self.outputs = outputs
+                self.call_hook('after_train_iter')
+
+                auxiliary_iter_times = [1] * len(auxiliary_data_iters)
+                for idx, it, nt in enumerate(zip(auxiliary_data_iters, auxiliary_iter_times)):
+                    for step in range(nt):
+                        data_batch = next(it)
+                        self.call_hook('before_train_iter')
+                        outputs = self.batch_processor(
+                            self.model, data, train_mode=True, source='/aux' + str(idx), **kwargs)
+                        if not isinstance(outputs, dict):
+                            raise TypeError('batch_processor() must return a dict')
+                        if 'log_vars' in outputs:
+                            self.log_buffer.update(outputs['log_vars'], outputs['num_samples'])
+                        self.outputs = outputs
+                        self.call_hook('after_train_iter')
+                        
+                self._iter += 1
+
+        else:
+            for i, data_batch in enumerate(data_loader[0]):
+                self._inner_iter = i
+                self.call_hook('before_train_iter')
+                outputs = self.batch_processor(
+                    self.model, data_batch, train_mode=True, **kwargs)
+                if not isinstance(outputs, dict):
+                    raise TypeError('batch_processor() must return a dict')
+                if 'log_vars' in outputs:
+                    self.log_buffer.update(outputs['log_vars'],
+                                           outputs['num_samples'])
+                self.outputs = outputs
+                # print(outputs)
+                # print(sum(np.array(self.log_buffer.n_history['batch_acc'])))
+                self.call_hook('after_train_iter')
+                self._iter += 1
 
         self.call_hook('after_train_epoch')
         self._epoch += 1
@@ -338,7 +375,7 @@ class Runner(object):
                 iteratively.
             max_epochs (int): Total training epochs.
         """
-        assert isinstance(data_loaders, list)
+        # assert isinstance(data_loaders, list)
         assert mmcv.is_list_of(workflow, tuple)
         assert len(data_loaders) == len(workflow)
 
@@ -367,14 +404,17 @@ class Runner(object):
                 for _ in range(epochs):
                     if mode == 'train' and self.epoch >= max_epochs:
                         return
-                    epoch_runner(data_loaders[i], **kwargs)
+                    epoch_runner(data_loaders[mode], **kwargs)
+            if self.should_stop:
+                self.logger.info("nstep of decay exceeded, training terminates")
+                break
 
         time.sleep(1)  # wait for some hooks like loggers to finish
         self.call_hook('after_run')
 
-    def register_lr_hooks(self, lr_config):
+    def register_lr_hooks(self, lr_config, priority):
         if isinstance(lr_config, LrUpdaterHook):
-            self.register_hook(lr_config)
+            self.register_hook(lr_config, priority)
         elif isinstance(lr_config, dict):
             assert 'policy' in lr_config
             # from .hooks import lr_updater
@@ -382,7 +422,7 @@ class Runner(object):
             if not hasattr(lr_updater, hook_name):
                 raise ValueError('"{}" does not exist'.format(hook_name))
             hook_cls = getattr(lr_updater, hook_name)
-            self.register_hook(hook_cls(**lr_config))
+            self.register_hook(hook_cls(**lr_config), priority)
         else:
             raise TypeError('"lr_config" must be either a LrUpdaterHook object'
                             ' or dict, not {}'.format(type(lr_config)))
@@ -413,7 +453,7 @@ class Runner(object):
             optimizer_config = {}
         if checkpoint_config is None:
             checkpoint_config = {}
-        self.register_lr_hooks(lr_config)
+        self.register_lr_hooks(lr_config, 'LOWEST')
         self.register_hook(self.build_hook(optimizer_config, OptimizerHook))
         self.register_hook(self.build_hook(checkpoint_config, CheckpointHook))
         self.register_hook(IterTimerHook())

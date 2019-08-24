@@ -1,0 +1,19 @@
+{
+  "logger": {
+    "title": "Remote Sync"
+  },
+  "transport": "scp",
+  "uploadOnSave": true,
+  "useAtomicWrites": true,
+  "deleteLocal": false,
+  "hostname": "cdcgw.ie.cuhk.edu.hk",
+  "port": "2194",
+  "target": "/home/dhd/work/code/mmlab/mmcv",
+  "ignore": [
+    ".remote-sync.json",
+    ".git/**"
+  ],
+  "username": "dhd",
+  "password": "1QA2WS3ED",
+  "watch": []
+}

@@ -186,12 +186,13 @@ class CosineLrUpdaterHook(LrUpdaterHook):
 
 
 class PlateauLrUpdaterHook(LrUpdaterHook):
-    def __init__(self, tolerance, nstep, gamma, history, **kwargs):
+    def __init__(self, tolerance, nstep, gamma, history, key, **kwargs):
         self.tolerance = tolerance
         self.nstep = nstep
         self.gamma = gamma
         self.step_history = history
         self.decayed_steps = 0
+        self.key = key
         super(PlateauLrUpdaterHook, self).__init__(**kwargs)
 
 
@@ -199,7 +200,33 @@ class PlateauLrUpdaterHook(LrUpdaterHook):
         return base_lr * (self.gamma) ** self.decayed_steps
 
     def after_val_epoch(self, runner):
-        step_value = runner.val_acc
+        if not 'val' in self.key:
+            return
+        if hasattr(runner, self.key):
+            step_value = getattr(runner, self.key)
+        else:
+            runner.logger.info("runner not have designated step value")
+            exit(1)
+        self.step_history.append(step_value)
+        if len(self.step_history) > self.tolerance + 1:
+            max_value = max(self.step_history)
+            recent_max_value = max(self.step_history[-self.tolerance: ])
+            if recent_max_value < max_value:
+                self.decayed_steps = self.decayed_steps + 1
+                self.step_history = [max_value]
+                runner.logger.info('tolerance exceeded, LR decayed.')
+        if self.decayed_steps > self.nstep:
+            runner.should_stop = True
+        runner.logger.info('history_step_values: {}, decayed_steps: {}'.format(self.step_history, self.decayed_steps))
+
+    def after_train_epoch(self, runner):
+        if not 'train' in self.key:
+            return
+        if hasattr(runner, self.key):
+            step_value = getattr(runner, self.key)
+        else:
+            runner.logger.info("runner not have designated step value")
+            exit(1)
         self.step_history.append(step_value)
         if len(self.step_history) > self.tolerance + 1:
             max_value = max(self.step_history)

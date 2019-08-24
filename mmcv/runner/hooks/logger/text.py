@@ -31,7 +31,7 @@ class TextLoggerHook(LoggerHook):
                 ['{:.5f}'.format(lr) for lr in runner.current_lr()])
             log_str = 'Epoch [{}][{}/{}]\tlr: {}, '.format(
                 runner.epoch + 1, runner.inner_iter + 1,
-                len(runner.data_loader), lr_str)
+                len(runner.data_loader) if not isinstance(runner.data_loader, (list, tuple)) else len(runner.data_loader[0]), lr_str)
         else:
             log_str = 'Epoch({}) [{}][{}]\t'.format(runner.mode, runner.epoch,
                                                     runner.inner_iter + 1)
