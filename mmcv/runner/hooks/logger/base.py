@@ -3,6 +3,7 @@ from abc import ABCMeta, abstractmethod
 from ..hook import Hook
 from ...utils import get_dist_info, get_host_info, get_time_str, obj_from_dict
 import torch.distributed as dist
+import torch
 
 
 class LoggerHook(Hook):
@@ -43,11 +44,11 @@ class LoggerHook(Hook):
         # print('my rank is: ', _rank, 'after iteration')
         if self.every_n_inner_iters(runner, self.interval):
             runner.log_buffer.average(self.interval)
-            self.sync_buffer_output(self, runner)
+            self.sync_buffer_output(runner)
         elif self.end_of_epoch(runner) and not self.ignore_last:
             # not precise but more stable
             runner.log_buffer.average(self.interval)
-            self.sync_buffer_output(self, runner)
+            self.sync_buffer_output(runner)
         if runner.log_buffer.ready:
             self.log(runner, 'iter')
             if self.reset_flag:
@@ -55,7 +56,7 @@ class LoggerHook(Hook):
 
     def after_train_epoch(self, runner):
         runner.log_buffer.average()
-        self.sync_buffer_output(self, runner)
+        self.sync_buffer_output(runner)
         if runner.log_buffer.ready:
             self.log(runner, 'epoch')
         # haodong mod, for ReduceLROnPlateau support
@@ -64,7 +65,7 @@ class LoggerHook(Hook):
 
     def after_val_epoch(self, runner):
         runner.log_buffer.average()
-        self.sync_buffer_output(self, runner)
+        self.sync_buffer_output(runner)
         if runner.log_buffer.ready:
             self.log(runner, 'epoch')
         # haodong mod, for ReduceLROnPlateau support
@@ -77,10 +78,10 @@ class LoggerHook(Hook):
     def after_val_iter(self, runner):
         if self.every_n_inner_iters(runner, self.interval):
             runner.log_buffer.average(self.interval)
-            self.sync_buffer_output(self, runner)
+            self.sync_buffer_output(runner)
         elif self.end_of_epoch(runner) and not self.ignore_last:
             runner.log_buffer.average(self.interval)
-            self.sync_buffer_output(self, runner)
+            self.sync_buffer_output(runner)
         if runner.log_buffer.ready:
             self.log(runner, 'iter')
             if self.reset_flag:
@@ -88,7 +89,7 @@ class LoggerHook(Hook):
 
     def sync_buffer_output(self, runner):
         for k, v in runner.log_buffer.output.items():
-            tmp_tensor = torch.Tensor([v])
+            tmp_tensor = torch.Tensor([v]).cuda(torch.cuda.current_device())
             dist.all_reduce(tmp_tensor)
             tmp_tensor.div_(self.world_size)
             runner.log_buffer.output[k] = tmp_tensor.item()
