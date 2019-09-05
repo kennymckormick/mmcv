@@ -288,7 +288,15 @@ class Runner(object):
                 for idx, pair in enumerate(zip(auxiliary_data_iters, auxiliary_iter_times)):
                     it, nt = pair
                     for step in range(nt):
-                        data_batch = next(it)
+                        try:
+                            data_batch = next(it)
+                        except StopIteration:
+                            # end of dataloader, loop one more time (it's auxiliary_data_iter anyway)
+                            newit = iter(auxiliary_data_loaders[idx])
+                            auxiliary_data_iters[idx] = newit
+                            it = newit
+                            data_batch = next(it)
+
                         self.call_hook('before_train_iter')
                         outputs = self.batch_processor(
                             self.model, data_batch, train_mode=True, source='/aux' + str(idx), **kwargs)
