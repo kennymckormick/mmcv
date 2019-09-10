@@ -284,7 +284,11 @@ class Runner(object):
                 self.outputs = outputs
                 self.call_hook('after_train_iter')
 
-                auxiliary_iter_times = [1] * len(auxiliary_data_iters)
+                if 'train_ratio' in kwargs:
+                    auxiliary_iter_times = [1] * len(auxiliary_data_iters)
+                else:
+                    auxiliary_iter_times = kwargs['train_ratio'][1:]
+                    
                 for idx, pair in enumerate(zip(auxiliary_data_iters, auxiliary_iter_times)):
                     it, nt = pair
                     for step in range(nt):
