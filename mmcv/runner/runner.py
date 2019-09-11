@@ -267,6 +267,16 @@ class Runner(object):
         self.log_buffer.clear()
         self.call_hook('before_train_epoch')
 
+        if 'train_ratio' not in kwargs:
+            auxiliary_iter_times = [1] * len(auxiliary_data_iters)
+        else:
+            auxiliary_iter_times = kwargs['train_ratio'][1:]
+
+        if 'batch_flags' not in kwargs:
+            batch_flags = [''] * len(data_loader)
+        else:
+            batch_flags = kwargs['batch_flags']
+
 
         if len(data_loader) > 1:
             main_data_loader = data_loader[0]
@@ -275,6 +285,7 @@ class Runner(object):
             for i, data_batch in enumerate(main_data_loader):
                 self._inner_iter = i
                 self.call_hook('before_train_iter')
+                kwargs['batch_flag'] = batch_flags[0]
                 outputs = self.batch_processor(
                     self.model, data_batch, train_mode=True, source='', **kwargs)
                 if not isinstance(outputs, dict):
@@ -284,13 +295,13 @@ class Runner(object):
                 self.outputs = outputs
                 self.call_hook('after_train_iter')
 
-                if 'train_ratio' in kwargs:
-                    auxiliary_iter_times = [1] * len(auxiliary_data_iters)
-                else:
-                    auxiliary_iter_times = kwargs['train_ratio'][1:]
-                    
+
+
+
+
                 for idx, pair in enumerate(zip(auxiliary_data_iters, auxiliary_iter_times)):
                     it, nt = pair
+                    kwargs['batch_flag'] = batch_flags[idx + 1]
                     for step in range(nt):
                         try:
                             data_batch = next(it)
