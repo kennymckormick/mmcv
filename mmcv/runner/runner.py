@@ -268,7 +268,7 @@ class Runner(object):
         self.call_hook('before_train_epoch')
 
         if 'train_ratio' not in kwargs:
-            auxiliary_iter_times = [1] * len(auxiliary_data_iters)
+            auxiliary_iter_times = [1] * (len(data_loader) - 1)
         else:
             auxiliary_iter_times = kwargs['train_ratio'][1:]
 
