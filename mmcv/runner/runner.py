@@ -87,6 +87,26 @@ class Runner(object):
         self.train_acc = 0.0
         self.should_stop = False
 
+        # record training acc
+        self.old_train_class_acc = [0.0] * 400
+        self.new_train_class_acc = [0.0] * 400
+        # calculate gain acc per epoch
+        self.old_gain_class = [0.0] * 400
+        self.new_gain_class = [0.0] * 400
+        # quota modified last epoch
+        self.web_quota_mod = [0] * 400
+        self.tgt_quota_mod = [0] * 400
+        # current quota
+        self.old_quota = [10] * 400
+        self.new_quota = [10] * 400
+        # marginal effect
+        self.web_marginal = [0] * 400
+        self.tgt_marginal = [0] * 400
+        # hit n tot
+        self.hit = [0] * 400
+        self.tot = [0] * 400
+
+
     @property
     def model_name(self):
         """str: Name of the model, usually the module class name."""
@@ -277,6 +297,8 @@ class Runner(object):
         else:
             batch_flags = kwargs['batch_flags']
 
+        use_aux_per_niter = kwargs['train_ratio'][0]
+
 
         if len(data_loader) > 1:
             main_data_loader = data_loader[0]
@@ -295,7 +317,9 @@ class Runner(object):
                 self.outputs = outputs
                 self.call_hook('after_train_iter')
 
-
+                if self._iter % use_aux_per_niter != 0:
+                    self._iter += 1
+                    continue
 
 
 
