@@ -280,6 +280,8 @@ class Runner(object):
         mmcv.symlink(filename, linkname)
 
     def train(self, data_loader, **kwargs):
+        # The flag
+        kwargs['validate'] = False
         self.model.train()
         self.mode = 'train'
         self.data_loader = data_loader
@@ -368,6 +370,8 @@ class Runner(object):
         self._epoch += 1
 
     def val(self, data_loader, **kwargs):
+        # the flag
+        kwargs['validate'] = True
         self.model.eval()
         self.mode = 'val'
         self.data_loader = data_loader
