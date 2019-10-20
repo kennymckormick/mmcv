@@ -299,7 +299,10 @@ class Runner(object):
         else:
             batch_flags = kwargs['batch_flags']
 
-        use_aux_per_niter = kwargs['train_ratio'][0]
+        if 'train_ratio' not in kwargs:
+            use_aux_per_niter = kwargs['train_ratio'][0]
+        else:
+            use_aux_per_niter = 1
 
 
         if len(data_loader) > 1:
