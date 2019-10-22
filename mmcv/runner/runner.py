@@ -299,7 +299,7 @@ class Runner(object):
         else:
             batch_flags = kwargs['batch_flags']
 
-        if 'train_ratio' not in kwargs:
+        if 'train_ratio' in kwargs:
             use_aux_per_niter = kwargs['train_ratio'][0]
         else:
             use_aux_per_niter = 1
