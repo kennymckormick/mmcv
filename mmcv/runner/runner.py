@@ -12,6 +12,7 @@ from .hooks import (Hook, LrUpdaterHook, CheckpointHook, IterTimerHook,
 from .checkpoint import load_checkpoint, save_checkpoint
 from .priority import get_priority
 from .utils import get_dist_info, get_host_info, get_time_str, obj_from_dict
+import torch.distributed as dist
 import numpy as np
 
 # Actually 2 more variables added
@@ -87,30 +88,32 @@ class Runner(object):
         self.train_acc = 0.0
         self.should_stop = False
 
-        # record training acc
-        self.old_train_class_acc = [0.0] * 400
-        self.new_train_class_acc = [0.0] * 400
-        # calculate gain acc per epoch
-        self.old_gain_class = [0.0] * 400
-        self.new_gain_class = [0.0] * 400
-        # quota modified last epoch
-        self.web_quota_mod = [0] * 400
-        self.tgt_quota_mod = [0] * 400
-        # current quota
-        self.old_quota = [10] * 400
-        self.new_quota = [10] * 400
-        # marginal effect
-        self.web_marginal = [0] * 400
-        self.tgt_marginal = [0] * 400
-        # hit n tot
-        self.hit = [0] * 400
-        self.tot = [0] * 400
 
 
     @property
     def model_name(self):
         """str: Name of the model, usually the module class name."""
         return self._model_name
+
+    # init variables for dynamic sampling
+    def dynamic_init(self, num_label):
+        self.num_label = num_label
+        self.old_train_class_acc = torch.zeros([num_label]).type(torch.float).cuda()
+        self.new_train_class_acc = torch.zeros([num_label]).type(torch.float).cuda()
+        # calculate gain acc per epoch
+        self.old_gain_class = torch.zeros([num_label]).type(torch.float).cuda()
+        self.new_gain_class = torch.zeros([num_label]).type(torch.float).cuda()
+        # current quota
+        self.old_quota = torch.ones([num_label]).type(torch.int).cuda() * 10
+        self.new_quota = torch.zeros([num_label]).type(torch.int).cuda()
+        # marginal effect
+        self.web_marginal = torch.zeros([num_label]).type(torch.float).cuda()
+        self.tgt_marginal = torch.zeros([num_label]).type(torch.float).cuda()
+        # hit n tot
+        self.hit = torch.zeros([num_label]).type(torch.float).cuda()
+        self.tot = torch.zeros([num_label]).type(torch.float).cuda()
+
+        self.all_quota = self.num_label * 10
 
     @property
     def rank(self):
@@ -315,6 +318,13 @@ class Runner(object):
                 kwargs['batch_flag'] = batch_flags[0]
                 outputs = self.batch_processor(
                     self.model, data_batch, train_mode=True, source='', **kwargs)
+
+
+                if 'dynamic' in kwargs and kwargs['dynamic']:
+                    self.hit += outputs['hit']
+                    self.tot += outputs['tot']
+
+
                 if not isinstance(outputs, dict):
                     raise TypeError('batch_processor() must return a dict')
                 if 'log_vars' in outputs:
@@ -368,6 +378,14 @@ class Runner(object):
                 # print(sum(np.array(self.log_buffer.n_history['batch_acc'])))
                 self.call_hook('after_train_iter')
                 self._iter += 1
+
+        if 'dynamic' in kwargs and kwargs['dynamic']:
+            dist.all_reduce(self.hit)
+            dist.all_reduce(self.tot)
+            self.new_train_class_acc = self.hit / self.tot
+            print('Training Acc Per Class:', self.new_train_class_acc)
+
+
 
         self.call_hook('after_train_epoch')
         self._epoch += 1
