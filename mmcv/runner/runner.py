@@ -7,17 +7,75 @@ import torch
 
 from . import hooks
 from .log_buffer import LogBuffer
+from torch.utils.data import DataLoader
 from .hooks import (Hook, LrUpdaterHook, CheckpointHook, IterTimerHook,
                     OptimizerHook, lr_updater)
+from mmcv.parallel import collate
 from .checkpoint import load_checkpoint, save_checkpoint
 from .priority import get_priority
 from .utils import get_dist_info, get_host_info, get_time_str, obj_from_dict
 import torch.distributed as dist
+import random
+import math
+import copy as cp
 import numpy as np
+from torch.utils.data.sampler import Sampler
 
 # Actually 2 more variables added
 # 1. val_acc: writed by logger_hook, at time after_val_epoch, default value 0
 # 2. should_stop: writed by lr_updater, at time after_val_epoch(like scheduler.step()), default value False
+
+
+class DistributedHandFreqSampler(Sampler):
+    def __init__(self, dataset, handfreq, samples_per_gpu=1, num_replicas=None, rank=None):
+        if num_replicas is None:
+            num_replicas = get_world_size()
+        if rank is None:
+            rank = get_rank()
+        self.rank = rank
+        self.num_replicas = num_replicas
+        self.dataset = dataset
+        self.handfreq = handfreq
+
+        self.samples_per_gpu = samples_per_gpu
+        self.num_samples = math.ceil(len(dataset) / samples_per_gpu / num_replicas) * samples_per_gpu
+        self.tot_samples = self.num_samples * num_replicas
+
+    def __iter__(self):
+        # deterministically shuffle based on epoch
+        g = torch.Generator()
+        g.manual_seed(self.epoch)
+        indices = torch.multinomial(torch.Tensor(self.handfreq), self.tot_samples, replacement=True, generator=g)
+        indices = indices.data.numpy().tolist()
+        # subsample
+        indices = indices[self.rank:self.tot_samples:self.num_replicas]
+        assert len(indices) == self.num_samples
+        return iter(indices)
+
+    def __len__(self):
+        return self.num_samples
+
+    def set_epoch(self, epoch):
+        self.epoch = epoch
+
+def regenerate_dataloader_byfreq(old_dataloader, freq, epoch):
+    rank, world_size = get_dist_info()
+    dataset = old_dataloader.dataset
+    batch_size = old_dataloader.batch_size
+    num_workers = old_dataloader.num_workers
+    sampler = DistributedHandFreqSampler(dataset, freq, batch_size, world_size, rank)
+    sampler.set_epoch(epoch)
+    collate_fn = old_dataloader.collate_fn
+    pin_memory = old_dataloader.pin_memory
+    worker_init_fn = old_dataloader.worker_init_fn
+    dataloader = DataLoader(dataset, batch_size=batch_size, sampler=sampler,
+                            num_workers=num_workers, collate_fn=collate_fn,
+                            pin_memory=pin_memory, worker_init_fn=worker_init_fn)
+    return dataloader
+
+
+
+
 
 
 class Runner(object):
@@ -87,6 +145,7 @@ class Runner(object):
         self.val_acc = 0.0
         self.train_acc = 0.0
         self.should_stop = False
+        self.use_dynamic = False
 
 
 
@@ -98,17 +157,18 @@ class Runner(object):
     # init variables for dynamic sampling
     def dynamic_init(self, num_label):
         self.num_label = num_label
+        self.use_dynamic = True
         self.old_train_class_acc = torch.zeros([num_label]).type(torch.float).cuda()
         self.new_train_class_acc = torch.zeros([num_label]).type(torch.float).cuda()
         # calculate gain acc per epoch
-        self.old_gain_class = torch.zeros([num_label]).type(torch.float).cuda()
-        self.new_gain_class = torch.zeros([num_label]).type(torch.float).cuda()
+        self.old_gain_acc = torch.zeros([num_label]).type(torch.float).cuda()
+        self.new_gain_acc = torch.zeros([num_label]).type(torch.float).cuda()
         # current quota
-        self.old_quota = torch.ones([num_label]).type(torch.int).cuda() * 10
-        self.new_quota = torch.zeros([num_label]).type(torch.int).cuda()
+        self.old_quota = np.array([10] * num_label)
+        self.new_quota = np.array([10] * num_label)
         # marginal effect
-        self.web_marginal = torch.zeros([num_label]).type(torch.float).cuda()
-        self.tgt_marginal = torch.zeros([num_label]).type(torch.float).cuda()
+        # self.web_marginal = torch.zeros([num_label]).type(torch.float).cuda()
+        self.marginal = np.array([0.0] * num_label)
         # hit n tot
         self.hit = torch.zeros([num_label]).type(torch.float).cuda()
         self.tot = torch.zeros([num_label]).type(torch.float).cuda()
@@ -276,6 +336,13 @@ class Runner(object):
         else:
             meta.update(epoch=self.epoch + 1, iter=self.iter)
 
+        if self.use_dynamic:
+            meta['old_train_class_acc'] = self.old_train_class_acc
+            meta['old_gain_acc'] = self.old_gain_acc
+            meta['old_quota'] = self.old_quota
+            meta['new_quota'] = self.new_quota
+            meta['marginal'] = self.marginal
+
         filename = osp.join(out_dir, filename_tmpl.format(self.epoch + 1))
         linkname = osp.join(out_dir, 'latest.pth')
         optimizer = self.optimizer if save_optimizer else None
@@ -310,6 +377,8 @@ class Runner(object):
 
         if len(data_loader) > 1:
             main_data_loader = data_loader[0]
+            if 'dynamic' in kwargs and kwargs['dynamic']:
+                main_data_loader = regenerate_dataloader_byfreq(main_data_loader, self.new_quota, self._epoch)
             auxiliary_data_loaders = data_loader[1: ]
             auxiliary_data_iters = list(map(iter, auxiliary_data_loaders))
             for i, data_batch in enumerate(main_data_loader):
@@ -321,6 +390,7 @@ class Runner(object):
 
 
                 if 'dynamic' in kwargs and kwargs['dynamic']:
+                    # print('adding')
                     self.hit += outputs['hit']
                     self.tot += outputs['tot']
 
@@ -363,11 +433,21 @@ class Runner(object):
                 self._iter += 1
 
         else:
-            for i, data_batch in enumerate(data_loader[0]):
+            main_data_loader = data_loader[0]
+            if 'dynamic' in kwargs and kwargs['dynamic']:
+                main_data_loader = regenerate_dataloader_byfreq(main_data_loader, self.new_quota, self._epoch)
+            for i, data_batch in enumerate(main_data_loader):
                 self._inner_iter = i
                 self.call_hook('before_train_iter')
                 outputs = self.batch_processor(
                     self.model, data_batch, train_mode=True, **kwargs)
+
+                if 'dynamic' in kwargs and kwargs['dynamic']:
+                    # print('adding')
+                    self.hit += outputs['hit']
+                    self.tot += outputs['tot']
+                    # print('hit: ', self.hit)
+                    # print('tot: ', self.tot)
                 if not isinstance(outputs, dict):
                     raise TypeError('batch_processor() must return a dict')
                 if 'log_vars' in outputs:
@@ -380,10 +460,129 @@ class Runner(object):
                 self._iter += 1
 
         if 'dynamic' in kwargs and kwargs['dynamic']:
+            # if self._rank == 0:
+            #     print('hit: ', self.hit)
+            #     print('tot: ', self.tot)
             dist.all_reduce(self.hit)
             dist.all_reduce(self.tot)
+            # if self._rank == 0:
+            #     print('hit: ', self.hit)
+            #     print('tot: ', self.tot)
             self.new_train_class_acc = self.hit / self.tot
-            print('Training Acc Per Class:', self.new_train_class_acc)
+            self.new_gain_acc = self.new_train_class_acc - self.old_train_class_acc
+
+            # If we do resample?
+            do_resample = True
+            for step in [0] + kwargs['schedule']:
+                if self._epoch >= step and self._epoch - step < 5:
+                    do_resample = False
+
+            if do_resample:
+                assert kwargs['dynamic_policy'] in ['margin', 'naive']
+                if kwargs['dynamic_policy'] == 'margin':
+                    quota_diff = self.new_quota - self.old_quota
+                    gain_acc_diff = self.new_gain_acc - self.old_gain_acc
+                    num_label = kwargs['num_label']
+                    if self._rank == 0:
+                        print('quota_diff: ', quota_diff)
+                        print('gain_acc_diff: ', gain_acc_diff)
+
+                    marginal  = self.marginal
+                    if self._rank == 0:
+                        print('Old marginal: ', marginal)
+                    # print(num_label)
+                    for i in range(num_label):
+                        # print(quota_diff[i])
+                        if quota_diff[i] == 1:
+                            # print('hit1')
+                            marginal[i] = gain_acc_diff[i]
+                        elif quota_diff[i] == -1:
+                            # print('hit-1')
+                            marginal[i] = -gain_acc_diff[i]
+
+                    if self._rank == 0:
+                        print('New marginal: ', marginal)
+
+
+                    random_change = num_label // 40
+                    to_change = random_change * 4
+                    pairs = [(i, marginal[i]) for i in range(num_label)]
+                    def key(item):
+                        return item[1]
+                    pairs.sort(key=key)
+                    add_quota, remove_quota = [], []
+                    for i in range(num_label):
+                        idx = pairs[i][0]
+                        if self.old_quota[idx] <= 6:
+                            continue
+                        else:
+                            remove_quota.append(idx)
+                        if len(remove_quota) >= to_change:
+                            new_upper_bound = i
+                            break
+                    for i in range(num_label - 1, new_upper_bound, -1):
+                        idx = pairs[i][0]
+                        if self.old_quota[idx] >= 14:
+                            continue
+                        else:
+                            add_quota.append(idx)
+                        if len(add_quota) >= to_change:
+                            break
+                    if len(add_quota) != len(remove_quota):
+                        minlen = min(len(add_quota), len(remove_quota))
+                        add_quota = add_quota[:minlen]
+                        remove_quota = remove_quota[:minlen]
+                    quota_edit = set(add_quota + remove_quota)
+                    random_add_quota, random_remove_quota = [], []
+                    for i in range(random_change):
+                        to_change = random.choice(range(num_label))
+                        while to_change in quota_edit or self.old_quota[to_change] >= 14:
+                            to_change = random.choice(range(num_label))
+                        random_add_quota.append(to_change)
+                        quota_edit.add(to_change)
+                    for i in range(random_change):
+                        to_change = random.choice(range(num_label))
+                        while to_change in quota_edit or self.old_quota[to_change] <= 6:
+                            to_change = random.choice(range(num_label))
+                        random_remove_quota.append(to_change)
+                        quota_edit.add(to_change)
+                    self.old_quota = cp.deepcopy(self.new_quota)
+                    for rm in (remove_quota + random_remove_quota):
+                        self.new_quota[rm] -= 1
+                    for ad in (add_quota + random_add_quota):
+                        self.new_quota[ad] += 1
+                    if self._rank == 0:
+                        print('remove: ', remove_quota + random_remove_quota)
+                        print('add: ', add_quota + random_add_quota)
+                        print('old_quota: ', self.old_quota)
+                        print('new_quota: ', self.new_quota)
+                    self.marginal = marginal
+                elif kwargs['dynamic_policy'] == 'naive':
+                    gain_acc = self.new_gain_acc
+                    num_label = kwargs['num_label']
+                    gain_acc_tuples = []
+                    for i in range(num_label):
+                        gain_acc_tuples.append([i, gain_acc[i]])
+                    def key(item):
+                        return item[1]
+                    gain_acc_tuples.sort(key=key)
+                    self.old_quota = cp.deepcopy(self.new_quota)
+                    to_change = num_label // 4
+                    for i in range(to_change):
+                        self.new_quota[gain_acc_tuples[i][0]] += 1
+
+
+            if self._rank == 0:
+                print('Training Acc Per Class:\n', self.new_train_class_acc, flush=True)
+                print('Training Acc Gain Per Class:\n', self.new_gain_acc, flush=True)
+                print('Marginal Effect of 1 quota:\n', self.marginal, flush=True)
+                print('Current Quota:\n', self.new_quota, flush=True)
+
+
+            self.old_train_class_acc = self.new_train_class_acc.clone()
+            self.old_gain_acc = self.new_gain_acc.clone()
+            self.hit -= self.hit
+            self.tot -= self.tot
 
 
 
@@ -430,6 +629,12 @@ class Runner(object):
 
         self._epoch = checkpoint['meta']['epoch']
         self._iter = checkpoint['meta']['iter']
+        if self.use_dynamic:
+            self.old_train_class_acc = checkpoint['meta']['old_train_class_acc']
+            self.old_gain_acc = checkpoint['meta']['old_gain_acc']
+            self.old_quota = checkpoint['meta']['old_quota']
+            self.new_quota = checkpoint['meta']['new_quota']
+            self.marginal = checkpoint['meta']['marginal']
         if 'optimizer' in checkpoint and resume_optimizer:
             self.optimizer.load_state_dict(checkpoint['optimizer'])
 
