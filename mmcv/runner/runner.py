@@ -422,7 +422,7 @@ class Runner(object):
                 self.call_hook('before_train_iter')
                 kwargs['batch_flag'] = batch_flags[0]
                 outputs = self.batch_processor(
-                    self.model, data_dict['main'], train_mode=True, source='', **kwargs)
+                    self.model, data_dict['main'][0], train_mode=True, source='', **kwargs)
 
 
                 if 'dynamic' in kwargs and kwargs['dynamic']:
