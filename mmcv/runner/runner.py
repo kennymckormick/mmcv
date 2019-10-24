@@ -58,11 +58,16 @@ class DistributedHandFreqSampler(Sampler):
     def set_epoch(self, epoch):
         self.epoch = epoch
 
-def regenerate_dataloader_byfreq(old_dataloader, freq, epoch):
+def regenerate_dataloader_byfreq(old_dataloader, freq, epoch, base_distribution):
     rank, world_size = get_dist_info()
     dataset = old_dataloader.dataset
     batch_size = old_dataloader.batch_size
     num_workers = old_dataloader.num_workers
+    assert base_distribution in ['uniform', 'original']
+    if base_distribution == 'original':
+        original_distribution = dataset.dict_lens
+        freq = np.array(original_distribution) * np.array(freq)
+        freq = freq.tolist()
     sampler = DistributedHandFreqSampler(dataset, freq, batch_size, world_size, rank)
     sampler.set_epoch(epoch)
     collate_fn = old_dataloader.collate_fn
@@ -378,7 +383,8 @@ class Runner(object):
         if len(data_loader) > 1:
             main_data_loader = data_loader[0]
             if 'dynamic' in kwargs and kwargs['dynamic']:
-                main_data_loader = regenerate_dataloader_byfreq(main_data_loader, self.new_quota, self._epoch)
+                base_distribution = kwargs['dynamic_base_distribution']
+                main_data_loader = regenerate_dataloader_byfreq(main_data_loader, self.new_quota, self._epoch, base_distribution)
             auxiliary_data_loaders = data_loader[1: ]
             auxiliary_data_iters = list(map(iter, auxiliary_data_loaders))
             for i, data_batch in enumerate(main_data_loader):
@@ -435,7 +441,8 @@ class Runner(object):
         else:
             main_data_loader = data_loader[0]
             if 'dynamic' in kwargs and kwargs['dynamic']:
-                main_data_loader = regenerate_dataloader_byfreq(main_data_loader, self.new_quota, self._epoch)
+                base_distribution = kwargs['dynamic_base_distribution']
+                main_data_loader = regenerate_dataloader_byfreq(main_data_loader, self.new_quota, self._epoch, base_distribution)
             for i, data_batch in enumerate(main_data_loader):
                 self._inner_iter = i
                 self.call_hook('before_train_iter')
