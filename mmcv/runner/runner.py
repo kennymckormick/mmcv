@@ -13,10 +13,11 @@ from .hooks import (Hook, LrUpdaterHook, CheckpointHook, IterTimerHook,
 from mmcv.parallel import collate
 from .checkpoint import load_checkpoint, save_checkpoint
 from .priority import get_priority
-from .utils import get_dist_info, get_host_info, get_time_str, obj_from_dict
+from .utils import get_dist_info, get_host_info, get_time_str, obj_from_dict, mixup
 import torch.distributed as dist
 import random
 import math
+import itertools
 import copy as cp
 import numpy as np
 from torch.utils.data.sampler import Sampler
@@ -354,6 +355,7 @@ class Runner(object):
         save_checkpoint(self.model, filename, optimizer=optimizer, meta=meta)
         mmcv.symlink(filename, linkname)
 
+
     def train(self, data_loader, **kwargs):
         # The flag
         kwargs['validate'] = False
@@ -386,20 +388,46 @@ class Runner(object):
                 base_distribution = kwargs['dynamic_base_distribution']
                 main_data_loader = regenerate_dataloader_byfreq(main_data_loader, self.new_quota, self._epoch, base_distribution)
             auxiliary_data_loaders = data_loader[1: ]
-            auxiliary_data_iters = list(map(iter, auxiliary_data_loaders))
-            for i, data_batch in enumerate(main_data_loader):
+            # 10/24/2019, 11:45:44 AM
+            # auxiliary_data_iters = list(map(iter, auxiliary_data_loaders))
+            auxiliary_data_iters = list(map(itertools.cycle, auxiliary_data_loaders))
+
+            for i, main_data_batch in enumerate(main_data_loader):
+                # Data Preparation Code
+                data_dict['main'] = [main_data_batch]
+                if self._iter % use_aux_per_niter == 0:
+                    for idx, pair in enumerate(zip(auxiliary_data_iters, auxiliary_iter_times)):
+                        it, nt = pair
+                        aux_data = []
+                        aux_name = 'aux{}'.format(idx)
+                        for step in range(nt):
+                            data_batch = next(it)
+                            aux_data.append(data_batch)
+                        data_dict[aux_name] = aux_data
+                # Data Mixup Code
+                # Only support 3D Mixup Here
+                if 'cross_dataset_mixup' in kwargs and kwargs['cross_dataset_mixup']:
+                    spatial_mixup = 0
+                    temporal_mixup = 0
+                    if 'spatial_mixup' in kwargs and kwargs['spatial_mixup']:
+                        spatial_mixup = 1
+                    if 'temporal_mixup' in kwargs and kwargs['temporal_mixup']:
+                        temporal_mixup = 1
+                    data_dict = mixup(data_dict, spatial_mixup, temporal_mixup)
+
+
+                # Training Code
                 self._inner_iter = i
                 self.call_hook('before_train_iter')
                 kwargs['batch_flag'] = batch_flags[0]
                 outputs = self.batch_processor(
-                    self.model, data_batch, train_mode=True, source='', **kwargs)
+                    self.model, data_dict['main'], train_mode=True, source='', **kwargs)
 
 
                 if 'dynamic' in kwargs and kwargs['dynamic']:
                     # print('adding')
                     self.hit += outputs['hit']
                     self.tot += outputs['tot']
-
 
                 if not isinstance(outputs, dict):
                     raise TypeError('batch_processor() must return a dict')
@@ -408,25 +436,15 @@ class Runner(object):
                 self.outputs = outputs
                 self.call_hook('after_train_iter')
 
+                # No Aux Data for this iter, just go ahead
                 if self._iter % use_aux_per_niter != 0:
                     self._iter += 1
                     continue
 
-
-
-                for idx, pair in enumerate(zip(auxiliary_data_iters, auxiliary_iter_times)):
-                    it, nt = pair
+                for idx, nt in enumerate(auxiliary_iter_times):
                     kwargs['batch_flag'] = batch_flags[idx + 1]
                     for step in range(nt):
-                        try:
-                            data_batch = next(it)
-                        except StopIteration:
-                            # end of dataloader, loop one more time (it's auxiliary_data_iter anyway)
-                            newit = iter(auxiliary_data_loaders[idx])
-                            auxiliary_data_iters[idx] = newit
-                            it = newit
-                            data_batch = next(it)
-
+                        data_batch = data_dict['aux{}'.format(idx)][step]
                         self.call_hook('before_train_iter')
                         outputs = self.batch_processor(
                             self.model, data_batch, train_mode=True, source='/aux' + str(idx), **kwargs)

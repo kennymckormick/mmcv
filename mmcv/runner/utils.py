@@ -75,3 +75,48 @@ def obj_from_dict(info, parent=None, default_args=None):
         for name, value in default_args.items():
             args.setdefault(name, value)
     return obj_type(**args)
+
+
+# The dimensions are N 1 C T H W
+def mixup(data_dict, spatial_mixup, temporal_mixup):
+    if spatial_mixup or temporal_mixup:
+        data = []
+        gt = []
+        keys = list(data_dict.keys())
+        len_source = list(map(lamdba x: len(data_dict[x]), keys))
+        start_point = {}
+        end_point = {}
+        st = 0
+        for i, k in enumerate(keys):
+            for idx in range(len_source[i]):
+                sub_data = data_dict[k][idx]['img_group_0']
+                sub_gt = data_dict[k][idx]['gt_label']
+                start_point['{}_{}'.format(k, idx)] = st
+                st += sub_data.size()[0]
+                end_point['{}_{}'.format(k, idx)] = st
+                data.append(sub_data)
+                gt.append(sub_gt)
+        data = torch.cat(data, axis=0)
+        gt = torch.cat(gt, axis=0)
+
+        if spatial_mixup and temporal_mixup:
+            mixed_data, gt_label_a, gt_label_b , lam = spatial_temporal_mixup_3d(data, gt)
+        elif spatial_mixup:
+            mixed_data, gt_label_a, gt_label_b , lam = spatial_mixup_3d(data, gt)
+        elif temporal_mixup:
+            mixed_data, gt_label_a, gt_label_b , lam = temporal_mixup_3d(data, gt)
+        else:
+            pass
+
+        for i, k in enumerate(keys):
+            for idx in range(len_source[i]):
+                name = '{}_{}'.format(k, idx)
+                st_point = start_point[name]
+                ed_point = end_point[name]
+                data_dict[k][idx]['img_group_0'] = mixed_data[st_point: ed_point]
+                data_dict[k][idx]['gt_label'] = {'gt_label_a': gt_label_a[st_point: ed_point],
+                                            'gt_label_b': gt_label_b[st_point: ed_point]}
+                data_dict[k][idx]['lam'] = lam
+        return data_dict
+    else:
+        return data_dict
