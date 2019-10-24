@@ -394,6 +394,7 @@ class Runner(object):
 
             for i, main_data_batch in enumerate(main_data_loader):
                 # Data Preparation Code
+                data_dict = {}
                 data_dict['main'] = [main_data_batch]
                 if self._iter % use_aux_per_niter == 0:
                     for idx, pair in enumerate(zip(auxiliary_data_iters, auxiliary_iter_times)):
