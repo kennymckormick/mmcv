@@ -83,7 +83,7 @@ def mixup(data_dict, spatial_mixup, temporal_mixup):
         data = []
         gt = []
         keys = list(data_dict.keys())
-        len_source = list(map(lamdba x: len(data_dict[x]), keys))
+        len_source = list(map(lambda x: len(data_dict[x]), keys))
         start_point = {}
         end_point = {}
         st = 0
