@@ -92,7 +92,7 @@ def mixup(data_dict, spatial_mixup, temporal_mixup):
                 sub_data = data_dict[k][idx]['img_group_0']
                 sub_gt = data_dict[k][idx]['gt_label']
                 start_point['{}_{}'.format(k, idx)] = st
-                st += sub_data.size()[0]
+                st += sub_data.shape[0]
                 end_point['{}_{}'.format(k, idx)] = st
                 data.append(sub_data)
                 gt.append(sub_gt)
