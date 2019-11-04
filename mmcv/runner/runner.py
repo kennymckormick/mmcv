@@ -444,7 +444,9 @@ class Runner(object):
                     lt = len(data_dict[k])
                     for j in range(lt):
                         data_dict[k][j].pop('lam')
-                        
+
+                kwargs['lam'] = lam
+
                 self._inner_iter = i
                 self.call_hook('before_train_iter')
                 kwargs['batch_flag'] = batch_flags[0]
