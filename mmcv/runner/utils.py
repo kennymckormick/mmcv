@@ -103,7 +103,7 @@ def mixup(data_dict, spatial_mixup, temporal_mixup):
         if spatial_mixup and temporal_mixup:
             mixed_data, gt_label_a, gt_label_b , lam = spatial_temporal_mixup_3d(data, gt)
         elif spatial_mixup:
-            mixed_data, gt_label_a, gt_label_b , lam = spatial_mixup_3d(data, gt)
+            mixed_data, gt_label_a, gt_label_b , lam = spatial_mixup(data, gt)
         elif temporal_mixup:
             mixed_data, gt_label_a, gt_label_b , lam = temporal_mixup_3d(data, gt)
         else:
