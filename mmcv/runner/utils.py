@@ -80,6 +80,7 @@ def obj_from_dict(info, parent=None, default_args=None):
 # The dimensions are N 1 C T H W
 def mixup(data_dict, use_spatial_mixup, use_temporal_mixup):
     if use_spatial_mixup or use_temporal_mixup:
+        print('in mixup, spatial_mixup: {}, temporal_mixup: {}'.format(use_spatial_mixup, use_temporal_mixup))
         data = []
         gt = []
         keys = list(data_dict.keys())
@@ -89,6 +90,7 @@ def mixup(data_dict, use_spatial_mixup, use_temporal_mixup):
         st = 0
         for i, k in enumerate(keys):
             for idx in range(len_source[i]):
+                print('Poping data_source {}, index {}'.format(k , idx))
                 sub_data = data_dict[k][idx]['img_group_0'].data[0]
                 sub_gt = data_dict[k][idx]['gt_label'].data[0]
                 start_point['{}_{}'.format(k, idx)] = st
@@ -96,9 +98,10 @@ def mixup(data_dict, use_spatial_mixup, use_temporal_mixup):
                 end_point['{}_{}'.format(k, idx)] = st
                 data.append(sub_data)
                 gt.append(sub_gt)
-
+        print('start_point: {}, end_point: {}'.format(start_point, end_point))
         data = torch.cat(data, dim=0)
         gt = torch.cat(gt, dim=0)
+        print('data shape: ', data.shape)
 
         if use_spatial_mixup and use_temporal_mixup:
             mixed_data, gt_label_a, gt_label_b , lam = spatial_temporal_mixup_3d(data, gt)
@@ -109,8 +112,11 @@ def mixup(data_dict, use_spatial_mixup, use_temporal_mixup):
         else:
             pass
 
+        print('After Cross Dataset Mixup')
+
         for i, k in enumerate(keys):
             for idx in range(len_source[i]):
+                print('Write back data_source {}, index {}'.format(k , idx))
                 name = '{}_{}'.format(k, idx)
                 st_point = start_point[name]
                 ed_point = end_point[name]
@@ -123,7 +129,7 @@ def mixup(data_dict, use_spatial_mixup, use_temporal_mixup):
                 tmp = data_dict[k][idx]['gt_label'].data[0]
                 data_dict[k][idx]['gt_label'].data[0] = torch.cat([gt_label_a[st_point: ed_point],gt_label_b[st_point: ed_point]], 0)
                 del(tmp)
-                
+
                 data_dict[k][idx]['lam'] = torch.tensor(lam)
         return data_dict
     else:
