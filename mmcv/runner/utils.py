@@ -78,8 +78,8 @@ def obj_from_dict(info, parent=None, default_args=None):
 
 
 # The dimensions are N 1 C T H W
-def mixup(data_dict, spatial_mixup, temporal_mixup):
-    if spatial_mixup or temporal_mixup:
+def mixup(data_dict, use_spatial_mixup, use_temporal_mixup):
+    if use_spatial_mixup or use_temporal_mixup:
         data = []
         gt = []
         keys = list(data_dict.keys())
@@ -100,11 +100,11 @@ def mixup(data_dict, spatial_mixup, temporal_mixup):
         data = torch.cat(data, dim=0)
         gt = torch.cat(gt, dim=0)
 
-        if spatial_mixup and temporal_mixup:
+        if use_spatial_mixup and use_temporal_mixup:
             mixed_data, gt_label_a, gt_label_b , lam = spatial_temporal_mixup_3d(data, gt)
-        elif spatial_mixup:
+        elif use_spatial_mixup:
             mixed_data, gt_label_a, gt_label_b , lam = spatial_mixup(data, gt)
-        elif temporal_mixup:
+        elif use_temporal_mixup:
             mixed_data, gt_label_a, gt_label_b , lam = temporal_mixup_3d(data, gt)
         else:
             pass
