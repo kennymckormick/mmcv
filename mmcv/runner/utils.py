@@ -7,7 +7,7 @@ from socket import gethostname
 import mmcv
 import torch
 import torch.distributed as dist
-
+from ..utils.mixup import spatial_mixup, temporal_mixup_3d, spatial_temporal_mixup_3d, temporal_mixup_2d, temporal_mixup_3d
 
 def get_host_info():
     return '{}@{}'.format(getuser(), gethostname())
