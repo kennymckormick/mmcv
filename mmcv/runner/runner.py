@@ -4,7 +4,7 @@ import time
 
 import mmcv
 import torch
-
+import psutil, os, sys, gc
 from . import hooks
 from .log_buffer import LogBuffer
 from torch.utils.data import DataLoader
@@ -21,6 +21,13 @@ import itertools
 import copy as cp
 import numpy as np
 from torch.utils.data.sampler import Sampler
+
+def memoStats():
+    pid = os.getpid()
+    py = psutil.Process(pid)
+    memoryUse = py.memory_info()[0] / 2. ** 30
+    print('memory GB:', memoryUse, flush=True)
+
 
 # Actually 2 more variables added
 # 1. val_acc: writed by logger_hook, at time after_val_epoch, default value 0
@@ -463,6 +470,8 @@ class Runner(object):
                 base_distribution = kwargs['dynamic_base_distribution']
                 main_data_loader = regenerate_dataloader_byfreq(main_data_loader, self.new_quota, self._epoch, base_distribution)
             for i, data_batch in enumerate(main_data_loader):
+                if i % 20 == 0:
+                    memoStats()
                 self._inner_iter = i
                 self.call_hook('before_train_iter')
                 outputs = self.batch_processor(
