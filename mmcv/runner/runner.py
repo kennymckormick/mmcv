@@ -437,15 +437,16 @@ class Runner(object):
 
 
                 # Training Code
-                lam = data_dict['main'][0]['lam']
+                if 'lam' in data_dict['main'][0]:
+                    lam = data_dict['main'][0]['lam']
 
-                keys = list(data_dict.keys())
-                for k in keys:
-                    lt = len(data_dict[k])
-                    for j in range(lt):
-                        data_dict[k][j].pop('lam')
+                    keys = list(data_dict.keys())
+                    for k in keys:
+                        lt = len(data_dict[k])
+                        for j in range(lt):
+                            data_dict[k][j].pop('lam')
 
-                kwargs['lam'] = lam
+                    kwargs['lam'] = lam
 
                 self._inner_iter = i
                 self.call_hook('before_train_iter')
