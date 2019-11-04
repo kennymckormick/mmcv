@@ -97,8 +97,8 @@ def mixup(data_dict, spatial_mixup, temporal_mixup):
                 data.append(sub_data)
                 gt.append(sub_gt)
 
-        data = torch.cat(data, axis=0)
-        gt = torch.cat(gt, axis=0)
+        data = torch.cat(data, dim=0)
+        gt = torch.cat(gt, dim=0)
 
         if spatial_mixup and temporal_mixup:
             mixed_data, gt_label_a, gt_label_b , lam = spatial_temporal_mixup_3d(data, gt)
