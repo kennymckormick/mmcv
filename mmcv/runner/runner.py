@@ -22,6 +22,16 @@ import copy as cp
 import numpy as np
 from torch.utils.data.sampler import Sampler
 
+
+
+def cycle(iterable):
+    iterator = iter(iterable)
+    while True:
+        try:
+            yield next(iterator)
+        except StopIteration:
+            iterator = iter(iterable)
+
 def memoStats():
     pid = os.getpid()
     py = psutil.Process(pid)
@@ -397,10 +407,12 @@ class Runner(object):
             auxiliary_data_loaders = data_loader[1: ]
             # 10/24/2019, 11:45:44 AM
             # auxiliary_data_iters = list(map(iter, auxiliary_data_loaders))
-            auxiliary_data_iters = list(map(itertools.cycle, auxiliary_data_loaders))
+            auxiliary_data_iters = list(map(cycle, auxiliary_data_loaders))
 
             for i, main_data_batch in enumerate(main_data_loader):
                 # Data Preparation Code
+                if i % 20 == 0:
+                    memoStats()
                 data_dict = {}
                 data_dict['main'] = [main_data_batch]
                 if self._iter % use_aux_per_niter == 0:
