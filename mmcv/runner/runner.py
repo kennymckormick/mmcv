@@ -411,8 +411,8 @@ class Runner(object):
 
             for i, main_data_batch in enumerate(main_data_loader):
                 # Data Preparation Code
-                if i % 20 == 0:
-                    memoStats()
+                # if i % 20 == 0:
+                #     memoStats()
                 data_dict = {}
                 data_dict['main'] = [main_data_batch]
                 if self._iter % use_aux_per_niter == 0:
