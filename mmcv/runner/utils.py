@@ -115,9 +115,12 @@ def mixup(data_dict, use_spatial_mixup, use_temporal_mixup):
                 st_point = start_point[name]
                 ed_point = end_point[name]
                 data_dict[k][idx]['img_group_0'].data[0] = mixed_data[st_point: ed_point]
-                data_dict[k][idx]['gt_label'].data[0] = {'gt_label_a': gt_label_a[st_point: ed_point],
-                                            'gt_label_b': gt_label_b[st_point: ed_point]}
-                data_dict[k][idx]['lam'] = lam
+
+                # data_dict[k][idx]['gt_label'].data[0] = {'gt_label_a': gt_label_a[st_point: ed_point],
+                #                             'gt_label_b': gt_label_b[st_point: ed_point]}
+                # Not working, only support tensor or list of tensors
+                data_dict[k][idx]['gt_label'].data[0] = torch.cat([gt_label_a[st_point: ed_point],gt_label_b[st_point: ed_point]], 0)
+                data_dict[k][idx]['lam'] = torch.tensor(lam)
         return data_dict
     else:
         return data_dict
