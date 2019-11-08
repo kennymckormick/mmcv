@@ -409,24 +409,30 @@ class Runner(object):
             # auxiliary_data_iters = list(map(iter, auxiliary_data_loaders))
             auxiliary_data_iters = list(map(cycle, auxiliary_data_loaders))
 
+            # support 2 style during iteration (mixup / no mixup)
             for i, main_data_batch in enumerate(main_data_loader):
-                # Data Preparation Code
+                # Data Preparation Code, only when mixup
                 # if i % 20 == 0:
                 #     memoStats()
-                data_dict = {}
-                data_dict['main'] = [main_data_batch]
-                if self._iter % use_aux_per_niter == 0:
-                    for idx, pair in enumerate(zip(auxiliary_data_iters, auxiliary_iter_times)):
-                        it, nt = pair
-                        aux_data = []
-                        aux_name = 'aux{}'.format(idx)
-                        for step in range(nt):
-                            data_batch = next(it)
-                            aux_data.append(data_batch)
-                        data_dict[aux_name] = aux_data
-                # Data Mixup Code
-                # Only support 3D Mixup Here
+                use_cross_dataset_mixup = False
                 if 'cross_dataset_mixup' in kwargs and kwargs['cross_dataset_mixup']:
+                    use_cross_dataset_mixup = True
+
+                if use_cross_dataset_mixup:
+                    data_dict = {}
+                    data_dict['main'] = [main_data_batch]
+                    if self._iter % use_aux_per_niter == 0:
+                        for idx, pair in enumerate(zip(auxiliary_data_iters, auxiliary_iter_times)):
+                            it, nt = pair
+                            aux_data = []
+                            aux_name = 'aux{}'.format(idx)
+                            for step in range(nt):
+                                data_batch = next(it)
+                                aux_data.append(data_batch)
+                            data_dict[aux_name] = aux_data
+                    # Data Mixup Code
+                    # Only support 3D Mixup Here
+
                     spatial_mixup = 0
                     temporal_mixup = 0
                     if 'spatial_mixup' in kwargs and kwargs['spatial_mixup']:
@@ -436,23 +442,28 @@ class Runner(object):
                     data_dict = mixup(data_dict, spatial_mixup, temporal_mixup)
 
 
-                # Training Code
-                if 'lam' in data_dict['main'][0]:
-                    lam = data_dict['main'][0]['lam']
+                    # Training Code
+                    if 'lam' in data_dict['main'][0]:
+                        lam = data_dict['main'][0]['lam']
 
-                    keys = list(data_dict.keys())
-                    for k in keys:
-                        lt = len(data_dict[k])
-                        for j in range(lt):
-                            data_dict[k][j].pop('lam')
+                        keys = list(data_dict.keys())
+                        for k in keys:
+                            lt = len(data_dict[k])
+                            for j in range(lt):
+                                data_dict[k][j].pop('lam')
 
-                    kwargs['lam'] = lam
+                        kwargs['lam'] = lam
 
                 self._inner_iter = i
                 self.call_hook('before_train_iter')
                 kwargs['batch_flag'] = batch_flags[0]
-                outputs = self.batch_processor(
-                    self.model, data_dict['main'][0], train_mode=True, source='', **kwargs)
+
+                if use_cross_dataset_mixup:
+                    outputs = self.batch_processor(
+                        self.model, data_dict['main'][0], train_mode=True, source='', **kwargs)
+                else:
+                    outputs = self.batch_processor(
+                        self.model, main_data_batch, train_mode=True, source='', **kwargs)
 
 
                 if 'dynamic' in kwargs and kwargs['dynamic']:
@@ -475,7 +486,10 @@ class Runner(object):
                 for idx, nt in enumerate(auxiliary_iter_times):
                     kwargs['batch_flag'] = batch_flags[idx + 1]
                     for step in range(nt):
-                        data_batch = data_dict['aux{}'.format(idx)][step]
+                        if use_cross_dataset_mixup:
+                            data_batch = data_dict['aux{}'.format(idx)][step]
+                        else:
+                            data_batch = next(auxiliary_data_iters[idx])
                         self.call_hook('before_train_iter')
                         outputs = self.batch_processor(
                             self.model, data_batch, train_mode=True, source='/aux' + str(idx), **kwargs)
