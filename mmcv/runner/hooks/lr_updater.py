@@ -12,6 +12,7 @@ class LrUpdaterHook(Hook):
                  warmup=None,
                  warmup_iters=0,
                  warmup_ratio=0.1,
+                 warpup_byepoch=False,
                  **kwargs):
         # validate the "warmup" argument
         if warmup is not None:
@@ -28,6 +29,7 @@ class LrUpdaterHook(Hook):
         self.by_epoch = by_epoch
         self.warmup = warmup
         self.warmup_iters = warmup_iters
+        self.warpup_byepoch = warpup_byepoch
         self.warmup_ratio = warmup_ratio
 
         self.base_lr = []  # initial lr for all param groups
@@ -65,6 +67,9 @@ class LrUpdaterHook(Hook):
         self.base_lr = [
             group['initial_lr'] for group in runner.optimizer.param_groups
         ]
+        if self.warmup_byepoch:
+            runner.logger.info('Warmup By Epoch, epoch_len is {}, total warmup iter is'.format(runner.epoch_len, self.warmup_iters * runner.epoch_len))
+            self.warmup_iters *= runner.epoch_len
 
     def before_train_epoch(self, runner):
         if not self.by_epoch:

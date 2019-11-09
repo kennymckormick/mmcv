@@ -163,6 +163,7 @@ class Runner(object):
         self._inner_iter = 0
         self._max_epochs = 0
         self._max_iters = 0
+        self.epoch_len = 0
 
         # variable added by haodong
         self.val_acc = 0.0
@@ -733,6 +734,7 @@ class Runner(object):
         self.logger.info('Start running, host: %s, work_dir: %s',
                          get_host_info(), work_dir)
         self.logger.info('workflow: %s, max: %d epochs', workflow, max_epochs)
+        self.epoch_len = len(data_loaders['train'][0])
         self.call_hook('before_run')
 
         while self.epoch < max_epochs:
