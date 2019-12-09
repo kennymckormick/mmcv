@@ -508,7 +508,7 @@ class Runner(object):
                 base_distribution = kwargs['dynamic_base_distribution']
                 main_data_loader = regenerate_dataloader_byfreq(main_data_loader, self.new_quota, self._epoch, base_distribution)
             for i, data_batch in enumerate(main_data_loader):
-                if i % 20 == 0:
+                if i % 100 == 0 and self.rank == 0:
                     memoStats()
                 self._inner_iter = i
                 self.call_hook('before_train_iter')
