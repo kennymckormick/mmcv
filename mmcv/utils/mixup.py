@@ -1,16 +1,17 @@
 import random as rd
-import torch
+try:
+    import torch
+except ImportError:
+    pass
 import numpy as np
 # Mixup for 5D Tensors
 
 
-def spatial_mixup(x, y, alpha=1.0, use_cuda=True):
+def spatial_mixup(x, y, alpha=0.2, use_cuda=True):
     '''Compute the mixup data. Return mixed inputs, pairs of targets, and lambda'''
     # use original x as main data, lam is for aux data
-    if alpha > 0.:
-        lam = np.random.random() / 2.5
-    else:
-        lam = 0.
+    lam = np.random.beta(alpha, alpha)
+    lam = 1 - lam if lam > 0.5 else lam
     batch_size = x.size()[0]
     if use_cuda:
         index = torch.randperm(batch_size).cuda()
@@ -22,14 +23,14 @@ def spatial_mixup(x, y, alpha=1.0, use_cuda=True):
     return mixed_x, y_a, y_b, lam
 
 # zhaoyue advice: get diversity, ruin temporal connectivity
-def spatial_temporal_mixup_3d(x, y, temporal_mixup_style, alpha=1.0, use_cuda=True):
+def spatial_temporal_mixup_3d(x, y, temporal_mixup_style, alpha=0.2, use_cuda=True):
     temporal_length = x.size()[3]
-    if alpha > 0:
-        lam_t = np.random.randint(0, temporal_length // 2 + 1)
-    else:
-        lam_t = 0
+    lam_t = np.random.beta(alpha, alpha)
+    lam_t = 1 - lam_t if lam_t > 0.5 else lam_t
+    lam_t = int(lam_t * temporal_length + 0.5)
 
-    lam_s = np.random.random() / 2.5
+    lam_s = np.random.beta(alpha, alpha)
+    lam_s = 1 - lam_s if lam_s > 0.5 else lam_s
 
     batch_size = x.size()[0]
     if use_cuda:
@@ -59,14 +60,15 @@ def spatial_temporal_mixup_3d(x, y, temporal_mixup_style, alpha=1.0, use_cuda=Tr
     return mixed_x, y_a, y_b, lam_aux
 
 
-def spatial_temporal_mixup_2d(x, y, alpha=1.0, use_cuda=True):
+def spatial_temporal_mixup_2d(x, y, alpha=0.2, use_cuda=True):
     temporal_length = x.size()[1]
-    if alpha > 0:
-        lam_t = np.random.randint(0, temporal_length // 2 + 1)
-    else:
-        lam_t = 0
 
-    lam_s = np.random.random() / 2.5
+    lam_t = np.random.beta(alpha, alpha)
+    lam_t = 1 - lam_t if lam_t > 0.5 else lam_t
+    lam_t = int(lam_t * temporal_length + 0.5)
+
+    lam_s = np.random.beta(alpha, alpha)
+    lam_s = 1 - lam_s if lam_s > 0.5 else lam_s
 
     batch_size = x.size()[0]
     if use_cuda:
@@ -88,13 +90,13 @@ def spatial_temporal_mixup_2d(x, y, alpha=1.0, use_cuda=True):
     return mixed_x, y_a, y_b, lam_aux
 
 
-def temporal_mixup_3d(x, y, temporal_mixup_style, alpha=1.0, use_cuda=True):
+def temporal_mixup_3d(x, y, temporal_mixup_style, alpha=0.2, use_cuda=True):
     temporal_length = x.size()[3]
     # print('temporal_length: ', temporal_length)
-    if alpha > 0:
-        lam = np.random.randint(0, temporal_length // 2 + 1)
-    else:
-        lam = 0
+    lam = np.random.beta(alpha, alpha)
+    lam = 1 - lam if lam > 0.5 else lam
+    lam = int(lam * temporal_length + 0.5)
+
     batch_size = x.size()[0]
     if use_cuda:
         index = torch.randperm(batch_size).cuda()
@@ -123,15 +125,13 @@ def temporal_mixup_3d(x, y, temporal_mixup_style, alpha=1.0, use_cuda=True):
     return mixed_x, y_a, y_b, lam
 
 
-def temporal_mixup_2d(x, y, alpha=1.0, use_cuda=True):
+def temporal_mixup_2d(x, y, alpha=0.2, use_cuda=True):
     temporal_length = x.size()[1]
-    if alpha > 0:
-        if allow_half:
-            lam = np.random.randint(0, temporal_length // 2 + 1)
-        else:
-            lam = np.random.randint(0, temporal_length // 2)
-    else:
-        lam = 0
+    lam = np.random.beta(alpha, alpha)
+    lam = 1 - lam if lam > 0.5 else lam
+    lam = int(lam * temporal_length + 0.5)
+
+    
     batch_size = x.size()[0]
     if use_cuda:
         index = torch.randperm(batch_size).cuda()
