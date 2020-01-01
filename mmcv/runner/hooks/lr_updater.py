@@ -190,56 +190,114 @@ class CosineLrUpdaterHook(LrUpdaterHook):
             (1 + cos(pi * (progress / max_progress)))
 
 
-class PlateauLrUpdaterHook(LrUpdaterHook):
-    def __init__(self, tolerance, nstep, gamma, history, key, **kwargs):
-        self.tolerance = tolerance
-        self.nstep = nstep
-        self.gamma = gamma
-        self.step_history = history
-        self.decayed_steps = 0
-        self.key = key
-        super(PlateauLrUpdaterHook, self).__init__(**kwargs)
+# Only Support
+class CyclicCosineLrUpdaterHook(LrUpdaterHook):
+
+    def __init__(self, target_lr=0, mode='uniform', ncycle=4, **kwargs):
+        super(CyclicCosineLrUpdaterHook, self).__init__(**kwargs)
+        self.target_lr = target_lr
+        self.mode = mode
+        self.ncycle = ncycle
+        self.cosine_segs = None
+
+    def init_cosine_segs(self, runner):
+        self.cosine_segs = []
+        if self.by_epoch:
+            max_progress = runner.max_epochs
+        else:
+            max_progress = runner.max_iters
+        if self.warmup is not None:
+            n_warmup = self.warmup_iters
+        else:
+            n_warmup = 0
+
+        if self.mode == 'uniform':
+            for i in range(self.ncycle):
+                st = n_warmup + int(i * (max_progress - n_warmup) / self.ncycles)
+                ed = n_warmup + int((i + 1) * (max_progress - n_warmup) / self.ncycles)
+                self.cosine_segs.append([st, ed])
+        elif self.mode == 'exp':
+            n_parts = sum(map(2 ** i, range(self.ncycle)))
+            st, ed = 0, 0
+            for i in range(self.ncycle):
+                st = ed
+                ed = st + 2 ** i
+                st_epoch = n_warmup + int(st * (max_progress - n_warmup) / n_parts)
+                ed_epoch = n_warmup + int(ed * (max_progress - n_warmup) / n_parts)
+                self.cosine_segs.append([st, ed])
+
 
 
     def get_lr(self, runner, base_lr):
-        return base_lr * (self.gamma) ** self.decayed_steps
+        if self.cosine_segs == None:
+            self.init_cosine_segs(runner)
 
-    def after_val_epoch(self, runner):
-        if not 'val' in self.key:
-            return
-        if hasattr(runner, self.key):
-            step_value = getattr(runner, self.key)
+        this_seg = None
+        if self.by_epoch:
+            progress = runner.epoch
         else:
-            runner.logger.info("runner not have designated step value")
-            exit(1)
-        self.step_history.append(step_value)
-        if len(self.step_history) > self.tolerance + 1:
-            max_value = max(self.step_history)
-            recent_max_value = max(self.step_history[-self.tolerance: ])
-            if recent_max_value < max_value:
-                self.decayed_steps = self.decayed_steps + 1
-                self.step_history = [max_value]
-                runner.logger.info('tolerance exceeded, LR decayed.')
-        if self.decayed_steps > self.nstep:
-            runner.should_stop = True
-        runner.logger.info('history_step_values: {}, decayed_steps: {}'.format(self.step_history, self.decayed_steps))
+            progress = runner.iter
+        for seg in self.cosine_segs:
+            if seg[0] <= progress < seg[1]:
+                this_seg = seg
 
-    def after_train_epoch(self, runner):
-        if not 'train' in self.key:
-            return
-        if hasattr(runner, self.key):
-            step_value = getattr(runner, self.key)
+        if this_seg == None:
+            return base_lr
         else:
-            runner.logger.info("runner not have designated step value")
-            exit(1)
-        self.step_history.append(step_value)
-        if len(self.step_history) > self.tolerance + 1:
-            max_value = max(self.step_history)
-            recent_max_value = max(self.step_history[-self.tolerance: ])
-            if recent_max_value < max_value:
-                self.decayed_steps = self.decayed_steps + 1
-                self.step_history = [max_value]
-                runner.logger.info('tolerance exceeded, LR decayed.')
-        if self.decayed_steps > self.nstep:
-            runner.should_stop = True
-        runner.logger.info('history_step_values: {}, decayed_steps: {}'.format(self.step_history, self.decayed_steps))
+            return self.target_lr + 0.5 * (base_lr - self.target_lr) * \
+                (1 + cos(pi * (progress / (this_seg[1] - this_seg[0]))))
+
+
+# class PlateauLrUpdaterHook(LrUpdaterHook):
+#     def __init__(self, tolerance, nstep, gamma, history, key, **kwargs):
+#         self.tolerance = tolerance
+#         self.nstep = nstep
+#         self.gamma = gamma
+#         self.step_history = history
+#         self.decayed_steps = 0
+#         self.key = key
+#         super(PlateauLrUpdaterHook, self).__init__(**kwargs)
+#
+#
+#     def get_lr(self, runner, base_lr):
+#         return base_lr * (self.gamma) ** self.decayed_steps
+#
+#     def after_val_epoch(self, runner):
+#         if not 'val' in self.key:
+#             return
+#         if hasattr(runner, self.key):
+#             step_value = getattr(runner, self.key)
+#         else:
+#             runner.logger.info("runner not have designated step value")
+#             exit(1)
+#         self.step_history.append(step_value)
+#         if len(self.step_history) > self.tolerance + 1:
+#             max_value = max(self.step_history)
+#             recent_max_value = max(self.step_history[-self.tolerance: ])
+#             if recent_max_value < max_value:
+#                 self.decayed_steps = self.decayed_steps + 1
+#                 self.step_history = [max_value]
+#                 runner.logger.info('tolerance exceeded, LR decayed.')
+#         if self.decayed_steps > self.nstep:
+#             runner.should_stop = True
+#         runner.logger.info('history_step_values: {}, decayed_steps: {}'.format(self.step_history, self.decayed_steps))
+#
+#     def after_train_epoch(self, runner):
+#         if not 'train' in self.key:
+#             return
+#         if hasattr(runner, self.key):
+#             step_value = getattr(runner, self.key)
+#         else:
+#             runner.logger.info("runner not have designated step value")
+#             exit(1)
+#         self.step_history.append(step_value)
+#         if len(self.step_history) > self.tolerance + 1:
+#             max_value = max(self.step_history)
+#             recent_max_value = max(self.step_history[-self.tolerance: ])
+#             if recent_max_value < max_value:
+#                 self.decayed_steps = self.decayed_steps + 1
+#                 self.step_history = [max_value]
+#                 runner.logger.info('tolerance exceeded, LR decayed.')
+#         if self.decayed_steps > self.nstep:
+#             runner.should_stop = True
+#         runner.logger.info('history_step_values: {}, decayed_steps: {}'.format(self.step_history, self.decayed_steps))
