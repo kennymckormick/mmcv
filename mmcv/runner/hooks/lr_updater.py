@@ -68,8 +68,10 @@ class LrUpdaterHook(Hook):
             group['initial_lr'] for group in runner.optimizer.param_groups
         ]
         if self.warmup_byepoch:
-            runner.logger.info('Warmup By Epoch, epoch_len is {}, total warmup iter is'.format(runner.epoch_len, self.warmup_iters * runner.epoch_len))
+            runner.logger.info('Warmup By Epoch, epoch_len is {}, total warmup iter is {}'.format(runner.epoch_len, self.warmup_iters * runner.epoch_len))
             self.warmup_iters *= runner.epoch_len
+        else:
+            runner.logger.info('Warmup By Iter, total warmup iter is {}'.format(self.warmup_iters))
 
     def before_train_epoch(self, runner):
         if not self.by_epoch:
