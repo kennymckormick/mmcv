@@ -256,8 +256,23 @@ class Runner(object):
             <class 'torch.optim.sgd.SGD'>
         """
         if isinstance(optimizer, dict):
-            optimizer = obj_from_dict(
-                optimizer, torch.optim, dict(params=self.model.parameters()))
+            # bn_no_weight_decay
+            params = self.model.parameters()
+            if 'bn_nowd' in optimizer and optimizer['bn_nowd']:
+                optimizer.pop('bn_nowd')
+                bn_params = []
+                non_bn_params = []
+                for name, p in self.model.named_parameters():
+                    if 'bn' in name:
+                        bn_params.append(p)
+                    else:
+                        non_bn_params.append(p)
+                org_weight_decay = optimizer.pop('weight_decay')
+                optim_params = [{'params': bn_params, 'weight_decay': 0},
+                                {'params': non_bn_params, 'weight_decay': org_weight_decay}]
+                optimizer = obj_from_dict(optimizer, torch.optim, dict(params=optim_params))
+            else:
+                optimizer = obj_from_dict(optimizer, torch.optim, dict(params=self.model.parameters()))
         elif not isinstance(optimizer, torch.optim.Optimizer):
             raise TypeError(
                 'optimizer must be either an Optimizer object or a dict, '
