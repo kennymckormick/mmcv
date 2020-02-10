@@ -78,7 +78,7 @@ def obj_from_dict(info, parent=None, default_args=None):
 
 
 # The dimensions are N 1 C T H W
-def mixup(data_dict, use_spatial_mixup, use_temporal_mixup):
+def mixup(data_dict, use_spatial_mixup, use_temporal_mixup, mixup_beta):
     if use_spatial_mixup or use_temporal_mixup:
         # print('in mixup, spatial_mixup: {}, temporal_mixup: {}'.format(use_spatial_mixup, use_temporal_mixup))
         data = []
@@ -104,11 +104,11 @@ def mixup(data_dict, use_spatial_mixup, use_temporal_mixup):
         # print('data shape: ', data.shape)
 
         if use_spatial_mixup and use_temporal_mixup:
-            mixed_data, gt_label_a, gt_label_b , lam = spatial_temporal_mixup_3d(data, gt)
+            mixed_data, gt_label_a, gt_label_b , lam = spatial_temporal_mixup_3d(data, gt, alpha=mixup_beta)
         elif use_spatial_mixup:
-            mixed_data, gt_label_a, gt_label_b , lam = spatial_mixup(data, gt)
+            mixed_data, gt_label_a, gt_label_b , lam = spatial_mixup(data, gt, alpha=mixup_beta)
         elif use_temporal_mixup:
-            mixed_data, gt_label_a, gt_label_b , lam = temporal_mixup_3d(data, gt)
+            mixed_data, gt_label_a, gt_label_b , lam = temporal_mixup_3d(data, gt, alpha=mixup_beta)
         else:
             pass
 

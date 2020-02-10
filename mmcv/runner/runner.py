@@ -455,7 +455,10 @@ class Runner(object):
                         spatial_mixup = 1
                     if 'temporal_mixup' in kwargs and kwargs['temporal_mixup']:
                         temporal_mixup = 1
-                    data_dict = mixup(data_dict, spatial_mixup, temporal_mixup)
+                    mixup_beta = 0.2
+                    if 'mixup_beta' in kwargs:
+                        mixup_beta = kwargs['mixup_beta']
+                    data_dict = mixup(data_dict, spatial_mixup, temporal_mixup, mixup_beta)
 
 
                     # Training Code
