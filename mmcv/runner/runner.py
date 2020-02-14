@@ -96,11 +96,6 @@ def regenerate_dataloader_byfreq(old_dataloader, freq, epoch, base_distribution)
                             pin_memory=pin_memory, worker_init_fn=worker_init_fn)
     return dataloader
 
-
-
-
-
-
 class Runner(object):
     """A training helper for PyTorch.
 
@@ -397,6 +392,10 @@ class Runner(object):
         self.data_loader = data_loader
         self._max_iters = self._max_epochs * len(data_loader)
         self.log_buffer.clear()
+        runner_info = {}
+        runner_info['max_iters'] = self._max_iters
+
+
         self.call_hook('before_train_epoch')
 
         if 'train_ratio' not in kwargs:
@@ -430,6 +429,8 @@ class Runner(object):
                 # Data Preparation Code, only when mixup
                 # if i % 20 == 0:
                 #     memoStats()
+                runner_info['this_iter'] = self._iter
+
                 use_cross_dataset_mixup = False
                 if 'cross_dataset_mixup' in kwargs and kwargs['cross_dataset_mixup']:
                     use_cross_dataset_mixup = True
@@ -479,10 +480,10 @@ class Runner(object):
 
                 if use_cross_dataset_mixup:
                     outputs = self.batch_processor(
-                        self.model, data_dict['main'][0], train_mode=True, source='', **kwargs)
+                        self.model, data_dict['main'][0], train_mode=True, source='', runner_info=runner_info, **kwargs)
                 else:
                     outputs = self.batch_processor(
-                        self.model, main_data_batch, train_mode=True, source='', **kwargs)
+                        self.model, main_data_batch, train_mode=True, source='', runner_info=runner_info, **kwargs)
 
 
                 if 'dynamic' in kwargs and kwargs['dynamic']:
@@ -511,7 +512,7 @@ class Runner(object):
                             data_batch = next(auxiliary_data_iters[idx])
                         self.call_hook('before_train_iter')
                         outputs = self.batch_processor(
-                            self.model, data_batch, train_mode=True, source='/aux' + str(idx), **kwargs)
+                            self.model, data_batch, train_mode=True, source='/aux' + str(idx), runner_info=runner_info, **kwargs)
                         if not isinstance(outputs, dict):
                             raise TypeError('batch_processor() must return a dict')
                         if 'log_vars' in outputs:
@@ -531,7 +532,7 @@ class Runner(object):
                 self._inner_iter = i
                 self.call_hook('before_train_iter')
                 outputs = self.batch_processor(
-                    self.model, data_batch, train_mode=True, **kwargs)
+                    self.model, data_batch, train_mode=True, runner_info=runner_info, **kwargs)
 
                 if 'dynamic' in kwargs and kwargs['dynamic']:
                     # print('adding')
