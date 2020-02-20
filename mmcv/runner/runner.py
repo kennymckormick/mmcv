@@ -737,8 +737,8 @@ class Runner(object):
 
                 gts = [x.label for x in data_loader.dataset.video_infos]
                 def intop(pred, label, n):
-                    pred = mmap(lambda x: np.argsort(x)[-n:], pred)
-                    hit = mmap(lambda l, p: l in p, label, pred)
+                    pred = list(map(lambda x: np.argsort(x)[-n:], pred))
+                    hit = list(map(lambda l, p: l in p, label, pred))
                     return hit
                 top1 = np.mean(intop(all_results, gts, 1))
                 top5 = np.mean(intop(all_results, gts, 5))
