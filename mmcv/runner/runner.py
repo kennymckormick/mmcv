@@ -730,6 +730,8 @@ class Runner(object):
                 all_results = []
                 for res in zip(*results):
                     all_results.extend(res)
+                num_samples = len(data_loader.dataset)
+                all_results = all_results[:num_samples]
                 with open(osp.join(self.work_dir, 'val_{}.pkl'.format(self._epoch)), 'wb') as fout:
                     pickle.dump(all_results, fout)
 
