@@ -722,13 +722,13 @@ class Runner(object):
         self.call_hook('after_val_epoch')
         if self.val_result != []:
             if self._rank == 0:
-                val_results = []
+                results = []
                 for i in range(self._world_size):
                     fin = open(osp.join(self.work_dir, '{}.pkl'.format(i)), 'rb')
                     results.append(pickle.load(fin))
                     fin.close()
                 all_results = []
-                for res in zip(*val_results):
+                for res in zip(*results):
                     all_results.extend(res)
                 with open(osp.join(self.work_dir, 'val_{}.pkl'.format(self._epoch)), 'wb') as fout:
                     pickle.dump(all_results, fout)
