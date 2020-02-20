@@ -19,6 +19,7 @@ import random
 import math
 import itertools
 import copy as cp
+import pickle
 import numpy as np
 from torch.utils.data.sampler import Sampler
 
@@ -165,6 +166,7 @@ class Runner(object):
         self.train_acc = 0.0
         self.should_stop = False
         self.use_dynamic = False
+        self.val_result = []
 
 
 
@@ -688,6 +690,7 @@ class Runner(object):
         self.mode = 'val'
         self.data_loader = data_loader
         self.log_buffer.clear()
+        self.val_result = []
         self.call_hook('before_val_epoch')
 
         for i, data_batch in enumerate(data_loader):
@@ -696,6 +699,9 @@ class Runner(object):
             with torch.no_grad():
                 outputs = self.batch_processor(
                     self.model, data_batch, train_mode=False, **kwargs)
+            if 'cls_score' in outputs:
+                cls_score = outputs.pop('cls_score')
+                self.val_result.append(cls_score.cpu().numpy())
             if not isinstance(outputs, dict):
                 raise TypeError('batch_processor() must return a dict')
             if 'log_vars' in outputs:
@@ -706,7 +712,26 @@ class Runner(object):
             self.outputs = outputs
             self.call_hook('after_val_iter')
 
+        if self.val_result != []:
+            val_result = np.concatenate(self.val_result, axis=0)
+            len_val = val_result.shape[0]
+            val_result = [val_result[i] for i in range(len_val)]
+            with open(osp.join(self.work_dir, '{}.pkl'.format(self._rank)), 'wb') as fout:
+                pickle.dump(val_result, fout)
+
         self.call_hook('after_val_epoch')
+        if self.val_result != []:
+            if self._rank == 0:
+                val_results = []
+                for i in range(self._world_size):
+                    fin = open(osp.join(self.work_dir, '{}.pkl'.format(i)), 'rb')
+                    results.append(pickle.load(fin))
+                    fin.close()
+                all_results = []
+                for res in zip(*val_results):
+                    all_results.extend(res)
+                with open(osp.join(self.work_dir, 'val_{}.pkl'.format(self._epoch)), 'wb') as fout:
+                    pickle.dump(all_results, fout)
 
     def resume(self, checkpoint, resume_optimizer=True,
                map_location='default'):
