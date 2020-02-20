@@ -735,6 +735,15 @@ class Runner(object):
                 with open(osp.join(self.work_dir, 'val_{}.pkl'.format(self._epoch)), 'wb') as fout:
                     pickle.dump(all_results, fout)
 
+                gts = [x.label for x in data_loader.dataset.video_infos]
+                def intop(pred, label, n):
+                    pred = mmap(lambda x: np.argsort(x)[-n:], pred)
+                    hit = mmap(lambda l, p: l in p, label, pred)
+                    return hit
+                top1 = np.mean(intop(all_results, gts, 1))
+                top5 = np.mean(intop(all_results, gts, 5))
+                print('VSummary: Epoch[{}] Top-1: {} Top-5: {}'.format(self._epoch, top1, top5))
+
     def resume(self, checkpoint, resume_optimizer=True,
                map_location='default'):
         if map_location == 'default':
