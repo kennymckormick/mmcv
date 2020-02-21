@@ -742,7 +742,7 @@ class Runner(object):
                     return hit
                 top1 = np.mean(intop(all_results, gts, 1))
                 top5 = np.mean(intop(all_results, gts, 5))
-                print('VSummary: Epoch[{}] Top-1: {} Top-5: {}'.format(self._epoch, top1, top5))
+                self.logger.info('VSummary: Epoch[{}] Top-1: {} Top-5: {}'.format(self._epoch, top1, top5))
 
     def resume(self, checkpoint, resume_optimizer=True,
                map_location='default'):
