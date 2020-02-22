@@ -756,7 +756,7 @@ class Runner(object):
                 checkpoint, map_location=map_location)
 
         self._epoch = checkpoint['meta']['epoch']
-        self._iter = checkpoint['meta']['iter']
+        self._iter = -1
         if self.use_dynamic:
             self.old_train_class_acc = checkpoint['meta']['old_train_class_acc']
             self.old_gain_acc = checkpoint['meta']['old_gain_acc']
@@ -766,7 +766,7 @@ class Runner(object):
         if 'optimizer' in checkpoint and resume_optimizer:
             self.optimizer.load_state_dict(checkpoint['optimizer'])
 
-        self.logger.info('resumed epoch %d, iter %d', self.epoch, self.iter)
+        self.logger.info('resumed epoch %d, iter %d', self.epoch, -1)
 
     def run(self, data_loaders, workflow, max_epochs, **kwargs):
         """Start running.
@@ -790,6 +790,9 @@ class Runner(object):
                          get_host_info(), work_dir)
         self.logger.info('workflow: %s, max: %d epochs', workflow, max_epochs)
         self.epoch_len = len(data_loaders['train'][0])
+        if self._iter == -1:
+            # n gpu may change if you use resume
+            self._iter = self._epoch * self.epoch_len
         self.call_hook('before_run')
 
         while self.epoch < max_epochs:
