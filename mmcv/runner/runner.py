@@ -392,7 +392,7 @@ class Runner(object):
         self.model.train()
         self.mode = 'train'
         self.data_loader = data_loader
-        self._max_iters = self._max_epochs * len(data_loader)
+        self._max_iters = self._max_epochs * len(data_loader[0])
         self.log_buffer.clear()
         runner_info = {}
         runner_info['max_iters'] = self._max_iters
