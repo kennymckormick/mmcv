@@ -1,12 +1,14 @@
+# Copyright (c) Open-MMLab. All rights reserved.
 from torch.nn.utils import clip_grad
 
-from .hook import Hook
+from .hook import Hook, HOOKS
 try:
     from apex import amp
 except ImportError:
     pass
 
 
+@HOOKS.register_module
 class OptimizerHook(Hook):
 
     def __init__(self, grad_clip=None, iter_size=1):

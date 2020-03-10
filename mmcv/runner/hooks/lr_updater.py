@@ -1,8 +1,8 @@
+# Copyright (c) Open-MMLab. All rights reserved.
 from __future__ import division
-
 from math import cos, pi
 
-from .hook import Hook
+from .hook import HOOKS, Hook
 
 
 class LrUpdaterHook(Hook):
@@ -98,6 +98,7 @@ class LrUpdaterHook(Hook):
                 self._set_lr(runner, warmup_lr)
 
 
+@HOOKS.register_module
 class FixedLrUpdaterHook(LrUpdaterHook):
 
     def __init__(self, **kwargs):
@@ -107,6 +108,7 @@ class FixedLrUpdaterHook(LrUpdaterHook):
         return base_lr
 
 
+@HOOKS.register_module
 class StepLrUpdaterHook(LrUpdaterHook):
 
     def __init__(self, step, gamma=0.1, **kwargs):
@@ -136,6 +138,7 @@ class StepLrUpdaterHook(LrUpdaterHook):
         return base_lr * self.gamma**exp
 
 
+@HOOKS.register_module
 class ExpLrUpdaterHook(LrUpdaterHook):
 
     def __init__(self, gamma, **kwargs):
@@ -147,10 +150,12 @@ class ExpLrUpdaterHook(LrUpdaterHook):
         return base_lr * self.gamma**progress
 
 
+@HOOKS.register_module
 class PolyLrUpdaterHook(LrUpdaterHook):
 
-    def __init__(self, power=1., **kwargs):
+    def __init__(self, power=1., min_lr=0., **kwargs):
         self.power = power
+        self.min_lr = min_lr
         super(PolyLrUpdaterHook, self).__init__(**kwargs)
 
     def get_lr(self, runner, base_lr):
@@ -160,9 +165,11 @@ class PolyLrUpdaterHook(LrUpdaterHook):
         else:
             progress = runner.iter
             max_progress = runner.max_iters
-        return base_lr * (1 - progress / max_progress)**self.power
+        coeff = (1 - progress / max_progress)**self.power
+        return (base_lr - self.min_lr) * coeff + self.min_lr
 
 
+@HOOKS.register_module
 class InvLrUpdaterHook(LrUpdaterHook):
 
     def __init__(self, gamma, power=1., **kwargs):
@@ -175,6 +182,7 @@ class InvLrUpdaterHook(LrUpdaterHook):
         return base_lr * (1 + self.gamma * progress)**(-self.power)
 
 
+@HOOKS.register_module
 class CosineLrUpdaterHook(LrUpdaterHook):
 
     def __init__(self, target_lr=0, **kwargs):

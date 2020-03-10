@@ -1,6 +1,8 @@
+# Copyright (c) Open-MMLab. All rights reserved.
 import os.path as osp
 
 import pytest
+
 from mmcv import Config, FileNotFoundError
 
 
