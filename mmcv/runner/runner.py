@@ -23,6 +23,13 @@ import pickle
 import numpy as np
 from torch.utils.data.sampler import Sampler
 
+fp16_enabled = True
+try:
+    from apex import amp
+except ImportError:
+    fp16_enabled = False
+    pass
+
 
 
 def cycle(iterable):
@@ -120,14 +127,32 @@ class Runner(object):
                  optimizer=None,
                  work_dir=None,
                  log_level=logging.INFO,
-                 logger=None):
+                 logger=None,
+                 use_fp16=False):
         assert callable(batch_processor)
+        global fp16_enabled
+
+        if logger is None:
+            # print('my rank is ', self._rank, 'my logger is none')
+            self.logger = self.init_logger(work_dir, log_level)
+        else:
+            self.logger = logger
+        self.log_buffer = LogBuffer()
+
+
         self.model = model
         if optimizer is not None:
             self.optimizer = self.init_optimizer(optimizer)
         else:
             self.optimizer = None
         self.batch_processor = batch_processor
+        self.use_fp16 = use_fp16
+        if not fp16_enabled:
+            self.logger.info('fp16 not enabled on this machine')
+            self.use_fp16 = False
+
+        if self.use_fp16:
+            self.model, self.optimizer = amp.initialize(self.model, self.optimizer)
 
         # create work_dir
         if mmcv.is_str(work_dir):
@@ -145,12 +170,7 @@ class Runner(object):
             self._model_name = self.model.__class__.__name__
 
         self._rank, self._world_size = get_dist_info()
-        if logger is None:
-            # print('my rank is ', self._rank, 'my logger is none')
-            self.logger = self.init_logger(work_dir, log_level)
-        else:
-            self.logger = logger
-        self.log_buffer = LogBuffer()
+
 
         self.mode = None
         self._hooks = []
