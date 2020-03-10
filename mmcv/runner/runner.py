@@ -132,6 +132,33 @@ class Runner(object):
         assert callable(batch_processor)
         global fp16_enabled
 
+        self._rank, self._world_size = get_dist_info()
+
+        self.mode = None
+        self._hooks = []
+        self._epoch = 0
+        self._iter = 0
+        self._inner_iter = 0
+        self._max_epochs = 0
+        self._max_iters = 0
+        self.epoch_len = 0
+
+        # variable added by haodong
+        self.val_acc = 0.0
+        self.train_acc = 0.0
+        self.should_stop = False
+        self.use_dynamic = False
+        self.val_result = []
+
+        # create work_dir
+        if mmcv.is_str(work_dir):
+            self.work_dir = osp.abspath(work_dir)
+            mmcv.mkdir_or_exist(self.work_dir)
+        elif work_dir is None:
+            self.work_dir = None
+        else:
+            raise TypeError('"work_dir" must be a str or None')
+
         if logger is None:
             # print('my rank is ', self._rank, 'my logger is none')
             self.logger = self.init_logger(work_dir, log_level)
@@ -154,14 +181,6 @@ class Runner(object):
         if self.use_fp16:
             self.model, self.optimizer = amp.initialize(self.model, self.optimizer)
 
-        # create work_dir
-        if mmcv.is_str(work_dir):
-            self.work_dir = osp.abspath(work_dir)
-            mmcv.mkdir_or_exist(self.work_dir)
-        elif work_dir is None:
-            self.work_dir = None
-        else:
-            raise TypeError('"work_dir" must be a str or None')
 
         # get model name from the model class
         if hasattr(self.model, 'module'):
@@ -169,24 +188,7 @@ class Runner(object):
         else:
             self._model_name = self.model.__class__.__name__
 
-        self._rank, self._world_size = get_dist_info()
 
-
-        self.mode = None
-        self._hooks = []
-        self._epoch = 0
-        self._iter = 0
-        self._inner_iter = 0
-        self._max_epochs = 0
-        self._max_iters = 0
-        self.epoch_len = 0
-
-        # variable added by haodong
-        self.val_acc = 0.0
-        self.train_acc = 0.0
-        self.should_stop = False
-        self.use_dynamic = False
-        self.val_result = []
 
 
 
