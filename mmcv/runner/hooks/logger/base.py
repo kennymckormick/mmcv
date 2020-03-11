@@ -60,9 +60,8 @@ class LoggerHook(Hook):
         runner.log_buffer.average()
         self.sync_buffer_output(runner)
         if runner.log_buffer.ready:
-            self.log(runner)
-            if self.reset_flag:
-                runner.log_buffer.clear_output()
+            self.log(runner, 'epoch')
+        # haodong mod, for ReduceLROnPlateau support
         if 'batch_acc' in runner.log_buffer.output:
             runner.train_acc = runner.log_buffer.output['batch_acc']
 
