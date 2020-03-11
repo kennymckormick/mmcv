@@ -116,7 +116,7 @@ class TextLoggerHook(LoggerHook):
         # training mode if the output contains the key "time"
         if 'time' in runner.log_buffer.output and torch.cuda.is_available():
             mem_mb = self._get_max_memory(runner)
-            log_str += 'memory: {}, '.format(mem_mb.item())
+            log_str += 'memory: {}, '.format(mem_mb)
         log_items = []
         for name, val in runner.log_buffer.output.items():
             if name in ['time', 'data_time']:
