@@ -2,7 +2,8 @@
 from abc import ABCMeta, abstractmethod
 
 from ..hook import Hook
-from ...utils import get_dist_info, get_host_info, get_time_str, obj_from_dict
+from ...utils import get_host_info, get_time_str, obj_from_dict
+from ...dist_utils import get_dist_info
 import torch.distributed as dist
 import torch
 
