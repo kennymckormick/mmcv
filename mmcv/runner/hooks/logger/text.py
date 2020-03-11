@@ -88,25 +88,41 @@ class TextLoggerHook(LoggerHook):
         else:
             return items
 
-    def log(self, runner):
-        log_dict = OrderedDict()
+    def log(self, runner, mode):
+        if runner.mode == 'train':
+            lr_str = ', '.join(
+                ['{:.5f}'.format(lr) for lr in runner.current_lr()])
+            log_str = 'Epoch [{}][{}/{}]\tlr: {}, '.format(
+                runner.epoch + 1, runner.inner_iter + 1,
+                len(runner.data_loader) if not isinstance(runner.data_loader, (list, tuple)) else len(runner.data_loader[0]), lr_str)
+        else:
+            log_str = 'Epoch({}) [{}][{}]\t'.format(runner.mode, runner.epoch,
+                                                    runner.inner_iter + 1)
+
+        if mode == 'epoch':
+            log_str = 'Epoch({}) Summary:\t'.format(runner.epoch + 1)
+        if 'time' in runner.log_buffer.output:
+            self.time_sec_tot += (
+                runner.log_buffer.output['time'] * self.interval)
+            time_sec_avg = self.time_sec_tot / (
+                runner.iter - self.start_iter + 1)
+            eta_sec = time_sec_avg * (runner.max_iters - runner.iter - 1)
+            eta_str = str(datetime.timedelta(seconds=int(eta_sec)))
+            log_str += 'eta: {}, '.format(eta_str)
+            log_str += (
+                'time: {log[time]:.3f}, data_time: {log[data_time]:.3f}, '.
+                format(log=runner.log_buffer.output))
+        # statistic memory
         # training mode if the output contains the key "time"
-        mode = 'train' if 'time' in runner.log_buffer.output else 'val'
-        log_dict['mode'] = mode
-        log_dict['epoch'] = runner.epoch + 1
-        log_dict['iter'] = runner.inner_iter + 1
-        # only record lr of the first param group
-        log_dict['lr'] = runner.current_lr()[0]
-        if mode == 'train':
-            log_dict['time'] = runner.log_buffer.output['time']
-            log_dict['data_time'] = runner.log_buffer.output['data_time']
-            # statistic memory
-            if torch.cuda.is_available():
-                log_dict['memory'] = self._get_max_memory(runner)
+        if 'time' in runner.log_buffer.output and torch.cuda.is_available():
+            mem_mb = self._get_max_memory(runner)
+            log_str += 'memory: {}, '.format(mem_mb.item())
+        log_items = []
         for name, val in runner.log_buffer.output.items():
             if name in ['time', 'data_time']:
                 continue
-            log_dict[name] = val
-
-        self._log_info(log_dict, runner)
-        self._dump_log(log_dict, runner)
+            if isinstance(val, float):
+                val = '{:.4f}'.format(val)
+            log_items.append('{}: {}'.format(name, val))
+        log_str += ', '.join(log_items)
+        runner.logger.info(log_str)

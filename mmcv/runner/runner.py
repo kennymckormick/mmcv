@@ -18,7 +18,7 @@ from .dist_utils import get_dist_info
 from .hooks import HOOKS, Hook, IterTimerHook
 from .log_buffer import LogBuffer
 from .priority import get_priority
-from .utils import get_dist_info, get_host_info, get_time_str, obj_from_dict, mixup
+from .utils import get_host_info, get_time_str, obj_from_dict, mixup
 import torch.distributed as dist
 import random
 import math
