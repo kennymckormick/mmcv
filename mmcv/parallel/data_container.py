@@ -78,10 +78,6 @@ class DataContainer(object):
     def padding_value(self):
         return self._padding_value
 
-    # old implementation
-    # @property
-    # def pad_dim(self):
-    #     return self._pad_dim
 
     @property
     def pad_dims(self):
