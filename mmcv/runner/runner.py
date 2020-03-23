@@ -4,7 +4,10 @@ import os.path as osp
 import time
 
 import torch
-import psutil, os, sys, gc
+import psutil
+import os
+import sys
+import gc
 from . import hooks
 from .log_buffer import LogBuffer
 from torch.utils.data import DataLoader
@@ -36,7 +39,6 @@ except ImportError:
     pass
 
 
-
 def cycle(iterable):
     iterator = iter(iterable)
     while True:
@@ -44,6 +46,7 @@ def cycle(iterable):
             yield next(iterator)
         except StopIteration:
             iterator = iter(iterable)
+
 
 def memoStats():
     pid = os.getpid()
@@ -69,14 +72,16 @@ class DistributedHandFreqSampler(Sampler):
         self.handfreq = handfreq
 
         self.samples_per_gpu = samples_per_gpu
-        self.num_samples = math.ceil(len(dataset) / samples_per_gpu / num_replicas) * samples_per_gpu
+        self.num_samples = math.ceil(
+            len(dataset) / samples_per_gpu / num_replicas) * samples_per_gpu
         self.tot_samples = self.num_samples * num_replicas
 
     def __iter__(self):
         # deterministically shuffle based on epoch
         g = torch.Generator()
         g.manual_seed(self.epoch)
-        indices = torch.multinomial(torch.Tensor(self.handfreq), self.tot_samples, replacement=True, generator=g)
+        indices = torch.multinomial(torch.Tensor(
+            self.handfreq), self.tot_samples, replacement=True, generator=g)
         indices = indices.data.numpy().tolist()
         # subsample
         indices = indices[self.rank:self.tot_samples:self.num_replicas]
@@ -89,6 +94,7 @@ class DistributedHandFreqSampler(Sampler):
     def set_epoch(self, epoch):
         self.epoch = epoch
 
+
 def regenerate_dataloader_byfreq(old_dataloader, freq, epoch, base_distribution):
     rank, world_size = get_dist_info()
     dataset = old_dataloader.dataset
@@ -99,7 +105,8 @@ def regenerate_dataloader_byfreq(old_dataloader, freq, epoch, base_distribution)
         original_distribution = dataset.dict_lens
         freq = np.array(original_distribution) * np.array(freq)
         freq = freq.tolist()
-    sampler = DistributedHandFreqSampler(dataset, freq, batch_size, world_size, rank)
+    sampler = DistributedHandFreqSampler(
+        dataset, freq, batch_size, world_size, rank)
     sampler.set_epoch(epoch)
     collate_fn = old_dataloader.collate_fn
     pin_memory = old_dataloader.pin_memory
@@ -108,6 +115,7 @@ def regenerate_dataloader_byfreq(old_dataloader, freq, epoch, base_distribution)
                             num_workers=num_workers, collate_fn=collate_fn,
                             pin_memory=pin_memory, worker_init_fn=worker_init_fn)
     return dataloader
+
 
 class Runner(object):
     """A training helper for PyTorch.
@@ -179,7 +187,6 @@ class Runner(object):
             self.logger = logger
         self.log_buffer = LogBuffer()
 
-
         self.model = model
         if optimizer is not None:
             self.optimizer = self.init_optimizer(optimizer)
@@ -192,8 +199,8 @@ class Runner(object):
             self.use_fp16 = False
 
         if self.use_fp16:
-            self.model, self.optimizer = amp.initialize(self.model, self.optimizer)
-
+            self.model, self.optimizer = amp.initialize(
+                self.model, self.optimizer)
 
         # get model name from the model class
         if hasattr(self.model, 'module'):
@@ -210,8 +217,10 @@ class Runner(object):
     def dynamic_init(self, num_label):
         self.num_label = num_label
         self.use_dynamic = True
-        self.old_train_class_acc = torch.zeros([num_label]).type(torch.float).cuda()
-        self.new_train_class_acc = torch.zeros([num_label]).type(torch.float).cuda()
+        self.old_train_class_acc = torch.zeros(
+            [num_label]).type(torch.float).cuda()
+        self.new_train_class_acc = torch.zeros(
+            [num_label]).type(torch.float).cuda()
         # calculate gain acc per epoch
         self.old_gain_acc = torch.zeros([num_label]).type(torch.float).cuda()
         self.new_gain_acc = torch.zeros([num_label]).type(torch.float).cuda()
@@ -285,22 +294,30 @@ class Runner(object):
         """
         if isinstance(optimizer, dict):
             # bn_no_weight_decay
-            params = self.model.parameters()
+            bn_params = []
+            non_bn_params = []
+            flow_layers_params = []
+            for name, p in self.model.named_parameters():
+                if 'bn' in name:
+                    bn_params.append(p)
+                elif 'flow_layer' in name:
+                    flow_layers_params.append(p)
+                else:
+                    non_bn_params.append(p)
+            weight_decay = optimizer['weight_decay']
+            lr = optimizer['lr']
+
             if 'bn_nowd' in optimizer and optimizer['bn_nowd']:
-                optimizer.pop('bn_nowd')
-                bn_params = []
-                non_bn_params = []
-                for name, p in self.model.named_parameters():
-                    if 'bn' in name:
-                        bn_params.append(p)
-                    else:
-                        non_bn_params.append(p)
-                org_weight_decay = optimizer.pop('weight_decay')
                 optim_params = [{'params': bn_params, 'weight_decay': 0},
-                                {'params': non_bn_params, 'weight_decay': org_weight_decay}]
-                optimizer = obj_from_dict(optimizer, torch.optim, dict(params=optim_params))
+                                {'params': non_bn_params},
+                                {'params': flow_layers_params, 'lr': lr * 0.01}]
             else:
-                optimizer = obj_from_dict(optimizer, torch.optim, dict(params=self.model.parameters()))
+                optim_params = [{'params': non_bn_params + bn_params},
+                                {'params': flow_layers_params, 'lr': lr * 0.01}]
+            if 'bn_nowd' in optimizer:
+                optimizer.pop('bn_nowd')
+            optimizer = obj_from_dict(
+                optimizer, torch.optim, dict(params=optim_params))
         elif not isinstance(optimizer, torch.optim.Optimizer):
             raise TypeError(
                 'optimizer must be either an Optimizer object or a dict, '
@@ -394,7 +411,6 @@ class Runner(object):
         else:
             meta.update(epoch=self.epoch + 1, iter=self.iter)
 
-
         if self.use_dynamic:
             meta['old_train_class_acc'] = self.old_train_class_acc
             meta['old_gain_acc'] = self.old_gain_acc
@@ -413,7 +429,6 @@ class Runner(object):
         if create_symlink:
             mmcv.symlink(filename, osp.join(out_dir, 'latest.pth'))
 
-
     def train(self, data_loader, **kwargs):
         # The flag
         kwargs['validate'] = False
@@ -424,7 +439,6 @@ class Runner(object):
         self.log_buffer.clear()
         runner_info = {}
         runner_info['max_iters'] = self._max_iters
-
 
         self.call_hook('before_train_epoch')
 
@@ -443,13 +457,13 @@ class Runner(object):
         else:
             use_aux_per_niter = 1
 
-
         if len(data_loader) > 1:
             main_data_loader = data_loader[0]
             if 'dynamic' in kwargs and kwargs['dynamic']:
                 base_distribution = kwargs['dynamic_base_distribution']
-                main_data_loader = regenerate_dataloader_byfreq(main_data_loader, self.new_quota, self._epoch, base_distribution)
-            auxiliary_data_loaders = data_loader[1: ]
+                main_data_loader = regenerate_dataloader_byfreq(
+                    main_data_loader, self.new_quota, self._epoch, base_distribution)
+            auxiliary_data_loaders = data_loader[1:]
             # 10/24/2019, 11:45:44 AM
             # auxiliary_data_iters = list(map(iter, auxiliary_data_loaders))
             auxiliary_data_iters = list(map(cycle, auxiliary_data_loaders))
@@ -489,8 +503,8 @@ class Runner(object):
                     mixup_beta = 0.2
                     if 'mixup_beta' in kwargs:
                         mixup_beta = kwargs['mixup_beta']
-                    data_dict = mixup(data_dict, spatial_mixup, temporal_mixup, mixup_beta)
-
+                    data_dict = mixup(data_dict, spatial_mixup,
+                                      temporal_mixup, mixup_beta)
 
                     # Training Code
                     if 'lam' in data_dict['main'][0]:
@@ -515,7 +529,6 @@ class Runner(object):
                     outputs = self.batch_processor(
                         self.model, main_data_batch, train_mode=True, source='', runner_info=runner_info, **kwargs)
 
-
                 if 'dynamic' in kwargs and kwargs['dynamic']:
                     # print('adding')
                     self.hit += outputs['hit']
@@ -524,7 +537,8 @@ class Runner(object):
                 if not isinstance(outputs, dict):
                     raise TypeError('batch_processor() must return a dict')
                 if 'log_vars' in outputs:
-                    self.log_buffer.update(outputs['log_vars'], outputs['num_samples'])
+                    self.log_buffer.update(
+                        outputs['log_vars'], outputs['num_samples'])
                 self.outputs = outputs
                 self.call_hook('after_train_iter')
 
@@ -544,9 +558,11 @@ class Runner(object):
                         outputs = self.batch_processor(
                             self.model, data_batch, train_mode=True, source='/aux' + str(idx), runner_info=runner_info, **kwargs)
                         if not isinstance(outputs, dict):
-                            raise TypeError('batch_processor() must return a dict')
+                            raise TypeError(
+                                'batch_processor() must return a dict')
                         if 'log_vars' in outputs:
-                            self.log_buffer.update(outputs['log_vars'], outputs['num_samples'])
+                            self.log_buffer.update(
+                                outputs['log_vars'], outputs['num_samples'])
                         self.outputs = outputs
                         self.call_hook('after_train_iter')
                 self._iter += 1
@@ -555,7 +571,8 @@ class Runner(object):
             main_data_loader = data_loader[0]
             if 'dynamic' in kwargs and kwargs['dynamic']:
                 base_distribution = kwargs['dynamic_base_distribution']
-                main_data_loader = regenerate_dataloader_byfreq(main_data_loader, self.new_quota, self._epoch, base_distribution)
+                main_data_loader = regenerate_dataloader_byfreq(
+                    main_data_loader, self.new_quota, self._epoch, base_distribution)
             for i, data_batch in enumerate(main_data_loader):
                 runner_info['this_iter'] = self._iter
                 if i % 100 == 0 and self.rank == 0:
@@ -610,7 +627,7 @@ class Runner(object):
                         print('quota_diff: ', quota_diff)
                         print('gain_acc_diff: ', gain_acc_diff)
 
-                    marginal  = self.marginal
+                    marginal = self.marginal
                     if self._rank == 0:
                         print('Old marginal: ', marginal)
                     # print(num_label)
@@ -626,10 +643,10 @@ class Runner(object):
                     if self._rank == 0:
                         print('New marginal: ', marginal)
 
-
                     random_change = num_label // 40
                     to_change = random_change * 4
                     pairs = [(i, marginal[i]) for i in range(num_label)]
+
                     def key(item):
                         return item[1]
                     pairs.sort(key=key)
@@ -686,6 +703,7 @@ class Runner(object):
                     gain_acc_tuples = []
                     for i in range(num_label):
                         gain_acc_tuples.append([i, gain_acc[i]])
+
                     def key(item):
                         return item[1]
                     gain_acc_tuples.sort(key=key)
@@ -694,20 +712,19 @@ class Runner(object):
                     for i in range(to_change):
                         self.new_quota[gain_acc_tuples[i][0]] += 1
 
-
             if self._rank == 0:
-                print('Training Acc Per Class:\n', self.new_train_class_acc, flush=True)
-                print('Training Acc Gain Per Class:\n', self.new_gain_acc, flush=True)
-                print('Marginal Effect of 1 quota:\n', self.marginal, flush=True)
+                print('Training Acc Per Class:\n',
+                      self.new_train_class_acc, flush=True)
+                print('Training Acc Gain Per Class:\n',
+                      self.new_gain_acc, flush=True)
+                print('Marginal Effect of 1 quota:\n',
+                      self.marginal, flush=True)
                 print('Current Quota:\n', self.new_quota, flush=True)
-
 
             self.old_train_class_acc = self.new_train_class_acc.clone()
             self.old_gain_acc = self.new_gain_acc.clone()
             self.hit -= self.hit
             self.tot -= self.tot
-
-
 
         self.call_hook('after_train_epoch')
         self._epoch += 1
@@ -753,7 +770,8 @@ class Runner(object):
             if self._rank == 0:
                 results = []
                 for i in range(self._world_size):
-                    fin = open(osp.join(self.work_dir, '{}.pkl'.format(i)), 'rb')
+                    fin = open(
+                        osp.join(self.work_dir, '{}.pkl'.format(i)), 'rb')
                     results.append(pickle.load(fin))
                     fin.close()
                 all_results = []
@@ -765,13 +783,15 @@ class Runner(object):
                     pickle.dump(all_results, fout)
 
                 gts = [x.label for x in data_loader.dataset.video_infos]
+
                 def intop(pred, label, n):
                     pred = list(map(lambda x: np.argsort(x)[-n:], pred))
                     hit = list(map(lambda l, p: l in p, label, pred))
                     return hit
                 top1 = np.mean(intop(all_results, gts, 1))
                 top5 = np.mean(intop(all_results, gts, 5))
-                self.logger.info('VSummary: Epoch[{}] Top-1: {} Top-5: {}'.format(self._epoch, top1, top5))
+                self.logger.info(
+                    'VSummary: Epoch[{}] Top-1: {} Top-5: {}'.format(self._epoch, top1, top5))
 
     def resume(self,
                checkpoint,
@@ -846,7 +866,8 @@ class Runner(object):
                         return
                     epoch_runner(data_loaders[mode], **kwargs)
             if self.should_stop:
-                self.logger.info("nstep of decay exceeded, training terminates")
+                self.logger.info(
+                    "nstep of decay exceeded, training terminates")
                 break
 
         time.sleep(1)  # wait for some hooks like loggers to finish
