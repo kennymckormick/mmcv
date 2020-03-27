@@ -74,10 +74,6 @@ def imread(img_or_path, flag='color', channel_order='bgr'):
     Returns:
         ndarray: Loaded image array.
     """
-    USE_MEMCACHED = False
-    if 'USE_MEMCACHED' in os.environ.keys():
-        USE_MEMCACHED = os.environ['USE_MEMCACHED']
-    orig_flag = flag
     if isinstance(img_or_path, np.ndarray):
         return img_or_path
     elif is_str(img_or_path):
