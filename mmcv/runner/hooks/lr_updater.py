@@ -35,7 +35,6 @@ class LrUpdaterHook(Hook):
         self.base_lr = []  # initial lr for all param groups
         self.regular_lr = []  # expected lr if no warming up is performed
 
-    # ok
     def _set_lr(self, runner, lr_groups):
         for param_group, lr in zip(runner.optimizer.param_groups, lr_groups):
             param_group['lr'] = lr
@@ -43,7 +42,6 @@ class LrUpdaterHook(Hook):
     def get_lr(self, runner, base_lr):
         raise NotImplementedError
 
-    # ok
     def get_regular_lr(self, runner):
         return [self.get_lr(runner, _base_lr) for _base_lr in self.base_lr]
 
@@ -58,7 +56,6 @@ class LrUpdaterHook(Hook):
             warmup_lr = [_lr * k for _lr in self.regular_lr]
         return warmup_lr
 
-    # ok
     def before_run(self, runner):
         # NOTE: when resuming from a checkpoint, if 'initial_lr' is not saved,
         # it will be set according to the optimizer params
@@ -68,10 +65,12 @@ class LrUpdaterHook(Hook):
             group['initial_lr'] for group in runner.optimizer.param_groups
         ]
         if self.warmup_byepoch:
-            runner.logger.info('Warmup By Epoch, epoch_len is {}, total warmup iter is {}'.format(runner.epoch_len, self.warmup_iters * runner.epoch_len))
+            runner.logger.info('Warmup By Epoch, epoch_len is {}, total warmup iter is {}'.format(
+                runner.epoch_len, self.warmup_iters * runner.epoch_len))
             self.warmup_iters *= runner.epoch_len
         else:
-            runner.logger.info('Warmup By Iter, total warmup iter is {}'.format(self.warmup_iters))
+            runner.logger.info(
+                'Warmup By Iter, total warmup iter is {}'.format(self.warmup_iters))
 
     def before_train_epoch(self, runner):
         if not self.by_epoch:
@@ -191,8 +190,8 @@ class CosineLrUpdaterHook(LrUpdaterHook):
 
     def get_lr(self, runner, base_lr):
         if self.by_epoch:
-            progress = runner.epoch
-            max_progress = runner.max_epochs
+            progress = runner.epoch * runner.epoch_len + runner._inner_iter
+            max_progress = runner.max_epochs * runner.epoch_len
         else:
             progress = runner.iter
             max_progress = runner.max_iters
@@ -223,8 +222,10 @@ class CyclicCosineLrUpdaterHook(LrUpdaterHook):
 
         if self.mode == 'uniform':
             for i in range(self.ncycle):
-                st = n_warmup + int(i * (max_progress - n_warmup) / self.ncycles)
-                ed = n_warmup + int((i + 1) * (max_progress - n_warmup) / self.ncycles)
+                st = n_warmup + \
+                    int(i * (max_progress - n_warmup) / self.ncycles)
+                ed = n_warmup + \
+                    int((i + 1) * (max_progress - n_warmup) / self.ncycles)
                 self.cosine_segs.append([st, ed])
         elif self.mode == 'exp':
             n_parts = sum(map(2 ** i, range(self.ncycle)))
@@ -232,14 +233,14 @@ class CyclicCosineLrUpdaterHook(LrUpdaterHook):
             for i in range(self.ncycle):
                 st = ed
                 ed = st + 2 ** i
-                st_epoch = n_warmup + int(st * (max_progress - n_warmup) / n_parts)
-                ed_epoch = n_warmup + int(ed * (max_progress - n_warmup) / n_parts)
-                self.cosine_segs.append([st, ed])
-
-
+                st_epoch = n_warmup + \
+                    int(st * (max_progress - n_warmup) / n_parts)
+                ed_epoch = n_warmup + \
+                    int(ed * (max_progress - n_warmup) / n_parts)
+                self.cosine_segs.append([st_epoch, ed_epoch])
 
     def get_lr(self, runner, base_lr):
-        if self.cosine_segs == None:
+        if self.cosine_segs is None:
             self.init_cosine_segs(runner)
 
         this_seg = None
@@ -251,63 +252,8 @@ class CyclicCosineLrUpdaterHook(LrUpdaterHook):
             if seg[0] <= progress < seg[1]:
                 this_seg = seg
 
-        if this_seg == None:
+        if this_seg is None:
             return base_lr
         else:
             return self.target_lr + 0.5 * (base_lr - self.target_lr) * \
                 (1 + cos(pi * (progress / (this_seg[1] - this_seg[0]))))
-
-
-# class PlateauLrUpdaterHook(LrUpdaterHook):
-#     def __init__(self, tolerance, nstep, gamma, history, key, **kwargs):
-#         self.tolerance = tolerance
-#         self.nstep = nstep
-#         self.gamma = gamma
-#         self.step_history = history
-#         self.decayed_steps = 0
-#         self.key = key
-#         super(PlateauLrUpdaterHook, self).__init__(**kwargs)
-#
-#
-#     def get_lr(self, runner, base_lr):
-#         return base_lr * (self.gamma) ** self.decayed_steps
-#
-#     def after_val_epoch(self, runner):
-#         if not 'val' in self.key:
-#             return
-#         if hasattr(runner, self.key):
-#             step_value = getattr(runner, self.key)
-#         else:
-#             runner.logger.info("runner not have designated step value")
-#             exit(1)
-#         self.step_history.append(step_value)
-#         if len(self.step_history) > self.tolerance + 1:
-#             max_value = max(self.step_history)
-#             recent_max_value = max(self.step_history[-self.tolerance: ])
-#             if recent_max_value < max_value:
-#                 self.decayed_steps = self.decayed_steps + 1
-#                 self.step_history = [max_value]
-#                 runner.logger.info('tolerance exceeded, LR decayed.')
-#         if self.decayed_steps > self.nstep:
-#             runner.should_stop = True
-#         runner.logger.info('history_step_values: {}, decayed_steps: {}'.format(self.step_history, self.decayed_steps))
-#
-#     def after_train_epoch(self, runner):
-#         if not 'train' in self.key:
-#             return
-#         if hasattr(runner, self.key):
-#             step_value = getattr(runner, self.key)
-#         else:
-#             runner.logger.info("runner not have designated step value")
-#             exit(1)
-#         self.step_history.append(step_value)
-#         if len(self.step_history) > self.tolerance + 1:
-#             max_value = max(self.step_history)
-#             recent_max_value = max(self.step_history[-self.tolerance: ])
-#             if recent_max_value < max_value:
-#                 self.decayed_steps = self.decayed_steps + 1
-#                 self.step_history = [max_value]
-#                 runner.logger.info('tolerance exceeded, LR decayed.')
-#         if self.decayed_steps > self.nstep:
-#             runner.should_stop = True
-#         runner.logger.info('history_step_values: {}, decayed_steps: {}'.format(self.step_history, self.decayed_steps))
