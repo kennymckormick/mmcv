@@ -323,8 +323,12 @@ class Runner(object):
                                     {'params': flow_layers_params, 'lr': lr * 0.01}]
             if 'bn_nowd' in optimizer:
                 optimizer.pop('bn_nowd')
-            optimizer = obj_from_dict(
-                optimizer, torch.optim, dict(params=optim_params))
+            if len(optim_params) == 1:
+                optimizer = obj_from_dict(optimizer, torch.optim,
+                                          dict(params=self.model.parameters()))
+            else:
+                optimizer = obj_from_dict(
+                    optimizer, torch.optim, dict(params=optim_params))
         elif not isinstance(optimizer, torch.optim.Optimizer):
             raise TypeError(
                 'optimizer must be either an Optimizer object or a dict, '
