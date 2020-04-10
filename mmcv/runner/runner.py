@@ -308,12 +308,19 @@ class Runner(object):
             lr = optimizer['lr']
 
             if 'bn_nowd' in optimizer and optimizer['bn_nowd']:
-                optim_params = [{'params': bn_params, 'weight_decay': 0},
-                                {'params': non_bn_params},
-                                {'params': flow_layers_params, 'lr': lr * 0.01}]
+                if flow_layers_params == []:
+                    optim_params = [{'params': bn_params, 'weight_decay': 0},
+                                    {'params': non_bn_params}]
+                else:
+                    optim_params = [{'params': bn_params, 'weight_decay': 0},
+                                    {'params': non_bn_params},
+                                    {'params': flow_layers_params, 'lr': lr * 0.01}]
             else:
-                optim_params = [{'params': non_bn_params + bn_params},
-                                {'params': flow_layers_params, 'lr': lr * 0.01}]
+                if flow_layers_params == []:
+                    optim_params = [{'params': non_bn_params + bn_params}]
+                else:
+                    optim_params = [{'params': non_bn_params + bn_params},
+                                    {'params': flow_layers_params, 'lr': lr * 0.01}]
             if 'bn_nowd' in optimizer:
                 optimizer.pop('bn_nowd')
             optimizer = obj_from_dict(
