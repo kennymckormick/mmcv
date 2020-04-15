@@ -461,7 +461,7 @@ class Runner(object):
         if 'batch_flags' not in kwargs:
             batch_flags = [''] * len(data_loader)
         else:
-            batch_flags = kwargs['batch_flags']
+            batch_flags = kwargs.pop('batch_flags')
 
         if 'train_ratio' in kwargs:
             use_aux_per_niter = kwargs['train_ratio'][0]
@@ -749,6 +749,11 @@ class Runner(object):
         self.log_buffer.clear()
         self.val_result = []
         self.call_hook('before_val_epoch')
+        if 'batch_flags' in kwargs:
+            batch_flag = kwargs.pop('batch_flags')[0]
+        else:
+            batch_flag = ''
+        kwargs['batch_flag'] = batch_flag
 
         for i, data_batch in enumerate(data_loader):
             self._inner_iter = i
