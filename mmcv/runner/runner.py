@@ -55,11 +55,6 @@ def memoStats():
     print('memory GB:', memoryUse, flush=True)
 
 
-# Actually 2 more variables added
-# 1. val_acc: writed by logger_hook, at time after_val_epoch, default value 0
-# 2. should_stop: writed by lr_updater, at time after_val_epoch(like scheduler.step()), default value False
-
-
 class DistributedHandFreqSampler(Sampler):
     def __init__(self, dataset, handfreq, samples_per_gpu=1, num_replicas=None, rank=None):
         if num_replicas is None:
@@ -162,7 +157,6 @@ class Runner(object):
         # variable added by haodong
         self.val_acc = 0.0
         self.train_acc = 0.0
-        self.should_stop = False
         self.val_result = []
 
         self.timestamp = get_time_str()
@@ -404,8 +398,6 @@ class Runner(object):
 
         optimizer = self.optimizer if save_optimizer else None
         save_checkpoint(self.model, filepath, optimizer=optimizer, meta=meta)
-        # in some environments, `os.symlink` is not supported, you may need to
-        # set `create_symlink` to False
         if create_symlink:
             mmcv.symlink(filename, osp.join(out_dir, 'latest.pth'))
 
@@ -422,20 +414,17 @@ class Runner(object):
 
         self.call_hook('before_train_epoch')
 
-        if 'train_ratio' not in kwargs:
-            auxiliary_iter_times = [1] * (len(data_loader) - 1)
-        else:
+        auxiliary_iter_times = [1] * (len(data_loader) - 1)
+        if 'train_ratio' in kwargs:
             auxiliary_iter_times = kwargs['train_ratio'][1:]
 
-        if 'batch_flags' not in kwargs:
-            batch_flags = [''] * len(data_loader)
-        else:
+        batch_flags = [''] * len(data_loader)
+        if 'batch_flags' in kwargs:
             batch_flags = kwargs.pop('batch_flags')
 
+        use_aux_per_niter = 1
         if 'train_ratio' in kwargs:
             use_aux_per_niter = kwargs['train_ratio'][0]
-        else:
-            use_aux_per_niter = 1
 
         if len(data_loader) > 1:
             main_data_loader = data_loader[0]
@@ -446,9 +435,6 @@ class Runner(object):
 
             # support 2 style during iteration (mixup / no mixup)
             for i, main_data_batch in enumerate(main_data_loader):
-                # Data Preparation Code, only when mixup
-                # if i % 20 == 0:
-                #     memoStats()
                 runner_info['this_iter'] = self._iter
 
                 use_cross_dataset_mixup = False
@@ -698,10 +684,6 @@ class Runner(object):
                     if mode == 'train' and self.epoch >= max_epochs:
                         return
                     epoch_runner(data_loaders[mode], **kwargs)
-            if self.should_stop:
-                self.logger.info(
-                    "nstep of decay exceeded, training terminates")
-                break
 
         time.sleep(1)  # wait for some hooks like loggers to finish
         self.call_hook('after_run')
