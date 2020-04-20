@@ -163,7 +163,6 @@ class Runner(object):
         self.val_acc = 0.0
         self.train_acc = 0.0
         self.should_stop = False
-        self.use_dynamic = False
         self.val_result = []
 
         self.timestamp = get_time_str()
@@ -212,29 +211,6 @@ class Runner(object):
     def model_name(self):
         """str: Name of the model, usually the module class name."""
         return self._model_name
-
-    # init variables for dynamic sampling
-    def dynamic_init(self, num_label):
-        self.num_label = num_label
-        self.use_dynamic = True
-        self.old_train_class_acc = torch.zeros(
-            [num_label]).type(torch.float).cuda()
-        self.new_train_class_acc = torch.zeros(
-            [num_label]).type(torch.float).cuda()
-        # calculate gain acc per epoch
-        self.old_gain_acc = torch.zeros([num_label]).type(torch.float).cuda()
-        self.new_gain_acc = torch.zeros([num_label]).type(torch.float).cuda()
-        # current quota
-        self.old_quota = np.array([10] * num_label)
-        self.new_quota = np.array([10] * num_label)
-        # marginal effect
-        # self.web_marginal = torch.zeros([num_label]).type(torch.float).cuda()
-        self.marginal = np.array([0.0] * num_label)
-        # hit n tot
-        self.hit = torch.zeros([num_label]).type(torch.float).cuda()
-        self.tot = torch.zeros([num_label]).type(torch.float).cuda()
-
-        self.all_quota = self.num_label * 10
 
     @property
     def rank(self):
@@ -422,13 +398,6 @@ class Runner(object):
         else:
             meta.update(epoch=self.epoch + 1, iter=self.iter)
 
-        if self.use_dynamic:
-            meta['old_train_class_acc'] = self.old_train_class_acc
-            meta['old_gain_acc'] = self.old_gain_acc
-            meta['old_quota'] = self.old_quota
-            meta['new_quota'] = self.new_quota
-            meta['marginal'] = self.marginal
-
         filename = filename_tmpl.format(self.epoch + 1)
         filepath = osp.join(out_dir, filename)
         linkname = osp.join(out_dir, 'latest.pth')
@@ -470,10 +439,6 @@ class Runner(object):
 
         if len(data_loader) > 1:
             main_data_loader = data_loader[0]
-            if 'dynamic' in kwargs and kwargs['dynamic']:
-                base_distribution = kwargs['dynamic_base_distribution']
-                main_data_loader = regenerate_dataloader_byfreq(
-                    main_data_loader, self.new_quota, self._epoch, base_distribution)
             auxiliary_data_loaders = data_loader[1:]
             # 10/24/2019, 11:45:44 AM
             # auxiliary_data_iters = list(map(iter, auxiliary_data_loaders))
@@ -540,11 +505,6 @@ class Runner(object):
                     outputs = self.batch_processor(
                         self.model, main_data_batch, train_mode=True, source='', runner_info=runner_info, **kwargs)
 
-                if 'dynamic' in kwargs and kwargs['dynamic']:
-                    # print('adding')
-                    self.hit += outputs['hit']
-                    self.tot += outputs['tot']
-
                 if not isinstance(outputs, dict):
                     raise TypeError('batch_processor() must return a dict')
                 if 'log_vars' in outputs:
@@ -580,10 +540,6 @@ class Runner(object):
 
         else:
             main_data_loader = data_loader[0]
-            if 'dynamic' in kwargs and kwargs['dynamic']:
-                base_distribution = kwargs['dynamic_base_distribution']
-                main_data_loader = regenerate_dataloader_byfreq(
-                    main_data_loader, self.new_quota, self._epoch, base_distribution)
             for i, data_batch in enumerate(main_data_loader):
                 runner_info['this_iter'] = self._iter
                 if i % 100 == 0 and self.rank == 0:
@@ -593,12 +549,6 @@ class Runner(object):
                 outputs = self.batch_processor(
                     self.model, data_batch, train_mode=True, runner_info=runner_info, **kwargs)
 
-                if 'dynamic' in kwargs and kwargs['dynamic']:
-                    # print('adding')
-                    self.hit += outputs['hit']
-                    self.tot += outputs['tot']
-                    # print('hit: ', self.hit)
-                    # print('tot: ', self.tot)
                 if not isinstance(outputs, dict):
                     raise TypeError('batch_processor() must return a dict')
                 if 'log_vars' in outputs:
@@ -609,133 +559,6 @@ class Runner(object):
                 # print(sum(np.array(self.log_buffer.n_history['batch_acc'])))
                 self.call_hook('after_train_iter')
                 self._iter += 1
-
-        if 'dynamic' in kwargs and kwargs['dynamic']:
-            # if self._rank == 0:
-            #     print('hit: ', self.hit)
-            #     print('tot: ', self.tot)
-            dist.all_reduce(self.hit)
-            dist.all_reduce(self.tot)
-            # if self._rank == 0:
-            #     print('hit: ', self.hit)
-            #     print('tot: ', self.tot)
-            self.new_train_class_acc = self.hit / self.tot
-            self.new_gain_acc = self.new_train_class_acc - self.old_train_class_acc
-
-            # If we do resample?
-            do_resample = True
-            for step in [0] + kwargs['schedule']:
-                if self._epoch >= step and self._epoch - step < 5:
-                    do_resample = False
-
-            if do_resample:
-                assert kwargs['dynamic_policy'] in ['margin', 'naive']
-                if kwargs['dynamic_policy'] == 'margin':
-                    quota_diff = self.new_quota - self.old_quota
-                    gain_acc_diff = self.new_gain_acc - self.old_gain_acc
-                    num_label = kwargs['num_label']
-                    if self._rank == 0:
-                        print('quota_diff: ', quota_diff)
-                        print('gain_acc_diff: ', gain_acc_diff)
-
-                    marginal = self.marginal
-                    if self._rank == 0:
-                        print('Old marginal: ', marginal)
-                    # print(num_label)
-                    for i in range(num_label):
-                        # print(quota_diff[i])
-                        if quota_diff[i] == 1:
-                            # print('hit1')
-                            marginal[i] = gain_acc_diff[i]
-                        elif quota_diff[i] == -1:
-                            # print('hit-1')
-                            marginal[i] = -gain_acc_diff[i]
-
-                    if self._rank == 0:
-                        print('New marginal: ', marginal)
-
-                    random_change = num_label // 40
-                    to_change = random_change * 4
-                    pairs = [(i, marginal[i]) for i in range(num_label)]
-
-                    def key(item):
-                        return item[1]
-                    pairs.sort(key=key)
-                    add_quota, remove_quota = [], []
-                    for i in range(num_label):
-                        idx = pairs[i][0]
-                        if self.old_quota[idx] <= 6:
-                            continue
-                        else:
-                            remove_quota.append(idx)
-                        if len(remove_quota) >= to_change:
-                            new_upper_bound = i
-                            break
-                    for i in range(num_label - 1, new_upper_bound, -1):
-                        idx = pairs[i][0]
-                        if self.old_quota[idx] >= 14:
-                            continue
-                        else:
-                            add_quota.append(idx)
-                        if len(add_quota) >= to_change:
-                            break
-                    if len(add_quota) != len(remove_quota):
-                        minlen = min(len(add_quota), len(remove_quota))
-                        add_quota = add_quota[:minlen]
-                        remove_quota = remove_quota[:minlen]
-                    quota_edit = set(add_quota + remove_quota)
-                    random_add_quota, random_remove_quota = [], []
-                    for i in range(random_change):
-                        to_change = random.choice(range(num_label))
-                        while to_change in quota_edit or self.old_quota[to_change] >= 14:
-                            to_change = random.choice(range(num_label))
-                        random_add_quota.append(to_change)
-                        quota_edit.add(to_change)
-                    for i in range(random_change):
-                        to_change = random.choice(range(num_label))
-                        while to_change in quota_edit or self.old_quota[to_change] <= 6:
-                            to_change = random.choice(range(num_label))
-                        random_remove_quota.append(to_change)
-                        quota_edit.add(to_change)
-                    self.old_quota = cp.deepcopy(self.new_quota)
-                    for rm in (remove_quota + random_remove_quota):
-                        self.new_quota[rm] -= 1
-                    for ad in (add_quota + random_add_quota):
-                        self.new_quota[ad] += 1
-                    if self._rank == 0:
-                        print('remove: ', remove_quota + random_remove_quota)
-                        print('add: ', add_quota + random_add_quota)
-                        print('old_quota: ', self.old_quota)
-                        print('new_quota: ', self.new_quota)
-                    self.marginal = marginal
-                elif kwargs['dynamic_policy'] == 'naive':
-                    gain_acc = self.new_gain_acc
-                    num_label = kwargs['num_label']
-                    gain_acc_tuples = []
-                    for i in range(num_label):
-                        gain_acc_tuples.append([i, gain_acc[i]])
-
-                    def key(item):
-                        return item[1]
-                    gain_acc_tuples.sort(key=key)
-                    self.old_quota = cp.deepcopy(self.new_quota)
-                    to_change = num_label // 4
-                    for i in range(to_change):
-                        self.new_quota[gain_acc_tuples[i][0]] += 1
-
-            if self._rank == 0:
-                print('Training Acc Per Class:\n',
-                      self.new_train_class_acc, flush=True)
-                print('Training Acc Gain Per Class:\n',
-                      self.new_gain_acc, flush=True)
-                print('Marginal Effect of 1 quota:\n',
-                      self.marginal, flush=True)
-                print('Current Quota:\n', self.new_quota, flush=True)
-
-            self.old_train_class_acc = self.new_train_class_acc.clone()
-            self.old_gain_acc = self.new_gain_acc.clone()
-            self.hit -= self.hit
-            self.tot -= self.tot
 
         self.call_hook('after_train_epoch')
         self._epoch += 1
@@ -824,12 +647,6 @@ class Runner(object):
 
         self._epoch = checkpoint['meta']['epoch']
         self._iter = -1
-        if self.use_dynamic:
-            self.old_train_class_acc = checkpoint['meta']['old_train_class_acc']
-            self.old_gain_acc = checkpoint['meta']['old_gain_acc']
-            self.old_quota = checkpoint['meta']['old_quota']
-            self.new_quota = checkpoint['meta']['new_quota']
-            self.marginal = checkpoint['meta']['marginal']
         if 'optimizer' in checkpoint and resume_optimizer:
             self.optimizer.load_state_dict(checkpoint['optimizer'])
 
