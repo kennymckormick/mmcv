@@ -21,7 +21,7 @@ from .dist_utils import get_dist_info
 from .hooks import HOOKS, Hook, IterTimerHook
 from .log_buffer import LogBuffer
 from .priority import get_priority
-from .utils import get_host_info, get_time_str, obj_from_dict, mixup
+from .utils import get_host_info, get_time_str, obj_from_dict
 import torch.distributed as dist
 import random
 import math
@@ -53,63 +53,6 @@ def memoStats():
     py = psutil.Process(pid)
     memoryUse = py.memory_info()[0] / 2. ** 30
     print('memory GB:', memoryUse, flush=True)
-
-
-class DistributedHandFreqSampler(Sampler):
-    def __init__(self, dataset, handfreq, samples_per_gpu=1, num_replicas=None, rank=None):
-        if num_replicas is None:
-            num_replicas = get_world_size()
-        if rank is None:
-            rank = get_rank()
-        self.rank = rank
-        self.num_replicas = num_replicas
-        self.dataset = dataset
-        self.handfreq = handfreq
-
-        self.samples_per_gpu = samples_per_gpu
-        self.num_samples = math.ceil(
-            len(dataset) / samples_per_gpu / num_replicas) * samples_per_gpu
-        self.tot_samples = self.num_samples * num_replicas
-
-    def __iter__(self):
-        # deterministically shuffle based on epoch
-        g = torch.Generator()
-        g.manual_seed(self.epoch)
-        indices = torch.multinomial(torch.Tensor(
-            self.handfreq), self.tot_samples, replacement=True, generator=g)
-        indices = indices.data.numpy().tolist()
-        # subsample
-        indices = indices[self.rank:self.tot_samples:self.num_replicas]
-        assert len(indices) == self.num_samples
-        return iter(indices)
-
-    def __len__(self):
-        return self.num_samples
-
-    def set_epoch(self, epoch):
-        self.epoch = epoch
-
-
-def regenerate_dataloader_byfreq(old_dataloader, freq, epoch, base_distribution):
-    rank, world_size = get_dist_info()
-    dataset = old_dataloader.dataset
-    batch_size = old_dataloader.batch_size
-    num_workers = old_dataloader.num_workers
-    assert base_distribution in ['uniform', 'original']
-    if base_distribution == 'original':
-        original_distribution = dataset.dict_lens
-        freq = np.array(original_distribution) * np.array(freq)
-        freq = freq.tolist()
-    sampler = DistributedHandFreqSampler(
-        dataset, freq, batch_size, world_size, rank)
-    sampler.set_epoch(epoch)
-    collate_fn = old_dataloader.collate_fn
-    pin_memory = old_dataloader.pin_memory
-    worker_init_fn = old_dataloader.worker_init_fn
-    dataloader = DataLoader(dataset, batch_size=batch_size, sampler=sampler,
-                            num_workers=num_workers, collate_fn=collate_fn,
-                            pin_memory=pin_memory, worker_init_fn=worker_init_fn)
-    return dataloader
 
 
 class Runner(object):
@@ -429,67 +372,17 @@ class Runner(object):
         if len(data_loader) > 1:
             main_data_loader = data_loader[0]
             auxiliary_data_loaders = data_loader[1:]
-            # 10/24/2019, 11:45:44 AM
-            # auxiliary_data_iters = list(map(iter, auxiliary_data_loaders))
             auxiliary_data_iters = list(map(cycle, auxiliary_data_loaders))
 
-            # support 2 style during iteration (mixup / no mixup)
             for i, main_data_batch in enumerate(main_data_loader):
                 runner_info['this_iter'] = self._iter
-
-                use_cross_dataset_mixup = False
-                if 'cross_dataset_mixup' in kwargs and kwargs['cross_dataset_mixup']:
-                    use_cross_dataset_mixup = True
-
-                if use_cross_dataset_mixup:
-                    data_dict = {}
-                    data_dict['main'] = [main_data_batch]
-                    if self._iter % use_aux_per_niter == 0:
-                        for idx, pair in enumerate(zip(auxiliary_data_iters, auxiliary_iter_times)):
-                            it, nt = pair
-                            aux_data = []
-                            aux_name = 'aux{}'.format(idx)
-                            for step in range(nt):
-                                data_batch = next(it)
-                                aux_data.append(data_batch)
-                            data_dict[aux_name] = aux_data
-                    # Data Mixup Code
-                    # Only support 3D Mixup Here
-
-                    spatial_mixup = 0
-                    temporal_mixup = 0
-                    if 'spatial_mixup' in kwargs and kwargs['spatial_mixup']:
-                        spatial_mixup = 1
-                    if 'temporal_mixup' in kwargs and kwargs['temporal_mixup']:
-                        temporal_mixup = 1
-                    mixup_beta = 0.2
-                    if 'mixup_beta' in kwargs:
-                        mixup_beta = kwargs['mixup_beta']
-                    data_dict = mixup(data_dict, spatial_mixup,
-                                      temporal_mixup, mixup_beta)
-
-                    # Training Code
-                    if 'lam' in data_dict['main'][0]:
-                        lam = data_dict['main'][0]['lam']
-
-                        keys = list(data_dict.keys())
-                        for k in keys:
-                            lt = len(data_dict[k])
-                            for j in range(lt):
-                                data_dict[k][j].pop('lam')
-
-                        kwargs['lam'] = lam
 
                 self._inner_iter = i
                 self.call_hook('before_train_iter')
                 kwargs['batch_flag'] = batch_flags[0]
 
-                if use_cross_dataset_mixup:
-                    outputs = self.batch_processor(
-                        self.model, data_dict['main'][0], train_mode=True, source='', runner_info=runner_info, **kwargs)
-                else:
-                    outputs = self.batch_processor(
-                        self.model, main_data_batch, train_mode=True, source='', runner_info=runner_info, **kwargs)
+                outputs = self.batch_processor(
+                    self.model, main_data_batch, train_mode=True, source='', runner_info=runner_info, **kwargs)
 
                 if not isinstance(outputs, dict):
                     raise TypeError('batch_processor() must return a dict')
@@ -507,10 +400,7 @@ class Runner(object):
                 for idx, nt in enumerate(auxiliary_iter_times):
                     kwargs['batch_flag'] = batch_flags[idx + 1]
                     for step in range(nt):
-                        if use_cross_dataset_mixup:
-                            data_batch = data_dict['aux{}'.format(idx)][step]
-                        else:
-                            data_batch = next(auxiliary_data_iters[idx])
+                        data_batch = next(auxiliary_data_iters[idx])
                         self.call_hook('before_train_iter')
                         outputs = self.batch_processor(
                             self.model, data_batch, train_mode=True, source='/aux' + str(idx), runner_info=runner_info, **kwargs)
