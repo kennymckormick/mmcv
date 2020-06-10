@@ -2,10 +2,6 @@
 from torch.nn.utils import clip_grad
 
 from .hook import Hook, HOOKS
-try:
-    from apex import amp
-except ImportError:
-    pass
 
 
 @HOOKS.register_module

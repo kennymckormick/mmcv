@@ -31,13 +31,6 @@ import pickle
 import numpy as np
 from torch.utils.data.sampler import Sampler
 
-fp16_enabled = True
-try:
-    from apex import amp
-except ImportError:
-    fp16_enabled = False
-    pass
-
 
 def cycle(iterable):
     iterator = iter(iterable)
