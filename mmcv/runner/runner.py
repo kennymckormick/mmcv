@@ -76,9 +76,8 @@ class Runner(object):
                  logger=None,
                  use_fp16=False,
                  meta=None):
-        assert callable(batch_processor)
-        global fp16_enabled
 
+        assert callable(batch_processor)
         self._rank, self._world_size = get_dist_info()
 
         self.mode = None
@@ -123,13 +122,7 @@ class Runner(object):
             self.optimizer = None
         self.batch_processor = batch_processor
         self.use_fp16 = use_fp16
-        if not fp16_enabled:
-            self.logger.info('fp16 not enabled on this machine')
-            self.use_fp16 = False
-
-        if self.use_fp16:
-            self.model, self.optimizer = amp.initialize(
-                self.model, self.optimizer)
+        self.use_fp16 = False
 
         # get model name from the model class
         if hasattr(self.model, 'module'):
