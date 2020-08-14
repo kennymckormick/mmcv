@@ -198,6 +198,23 @@ class CosineLrUpdaterHook(LrUpdaterHook):
         return self.target_lr + 0.5 * (base_lr - self.target_lr) * \
             (1 + cos(pi * (progress / max_progress)))
 
+    def before_train_iter(self, runner):
+        cur_iter = runner.iter
+        if not self.by_epoch:
+            self.regular_lr = self.get_regular_lr(runner)
+            if self.warmup is None or cur_iter >= self.warmup_iters:
+                self._set_lr(runner, self.regular_lr)
+            else:
+                warmup_lr = self.get_warmup_lr(cur_iter)
+                self._set_lr(runner, warmup_lr)
+        elif self.by_epoch:
+            self.regular_lr = self.get_regular_lr(runner)
+            if self.warmup is None or cur_iter > self.warmup_iters:
+                self._set_lr(runner, self.regular_lr)
+            else:
+                warmup_lr = self.get_warmup_lr(cur_iter)
+                self._set_lr(runner, warmup_lr)
+
 
 # Only Support
 class CyclicCosineLrUpdaterHook(LrUpdaterHook):
