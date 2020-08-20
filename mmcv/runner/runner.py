@@ -193,33 +193,43 @@ class Runner(object):
         """
         if isinstance(optimizer, dict):
             # bn_no_weight_decay
-            bn_params = []
-            non_bn_params = []
-            flow_layers_params = []
-            for name, p in self.model.named_parameters():
-                if 'bn' in name:
-                    bn_params.append(p)
-                elif 'flow_layer' in name:
-                    flow_layers_params.append(p)
-                else:
-                    non_bn_params.append(p)
             weight_decay = optimizer['weight_decay']
             lr = optimizer['lr']
 
+            params = {}
+            params['bn'] = []
+            params['lowlr'] = []
+            params['flow_layer'] = []
+            params['res'] = []
+
+            # additional info for each param group
+            info = {}
+            info['bn'] = {'weight_decay': 0}
+            info['lowlr'] = {'lr': lr * 0.1}
+            info['flow_layer'] = {'lr': lr * 0.01}
+            info['res'] = {}
+
+            for name, p in self.model.named_parameters():
+                if 'bn' in name:
+                    params['bn'].append(p)
+                elif 'lowlr' in name:
+                    params['lowlr'].append(p)
+                elif 'flow_layer' in name:
+                    params['flow_layer'].append(p)
+                else:
+                    params['res'].append(p)
+
+            optim_params = []
             if 'bn_nowd' in optimizer and optimizer['bn_nowd']:
-                if flow_layers_params == []:
-                    optim_params = [{'params': bn_params, 'weight_decay': 0},
-                                    {'params': non_bn_params}]
-                else:
-                    optim_params = [{'params': bn_params, 'weight_decay': 0},
-                                    {'params': non_bn_params},
-                                    {'params': flow_layers_params, 'lr': lr * 0.01}]
+                for k in params.keys():
+                    if len(params[k]):
+                        optim_params.append(dict(info[k].items() + [('params': params[k])]))
             else:
-                if flow_layers_params == []:
-                    optim_params = [{'params': non_bn_params + bn_params}]
-                else:
-                    optim_params = [{'params': non_bn_params + bn_params},
-                                    {'params': flow_layers_params, 'lr': lr * 0.01}]
+                optim_params.append({'params': params['res'] + params['bn']})
+                for k in params.keys():
+                    if k not in ['res', 'bn'] and len(params[k]):
+                        optim_params.append(dict(info[k].items() + [('params': params[k])]))
+
             if 'bn_nowd' in optimizer:
                 optimizer.pop('bn_nowd')
             if len(optim_params) == 1:
