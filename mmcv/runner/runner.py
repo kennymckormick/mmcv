@@ -223,12 +223,16 @@ class Runner(object):
             if 'bn_nowd' in optimizer and optimizer['bn_nowd']:
                 for k in params.keys():
                     if len(params[k]):
-                        optim_params.append(dict(info[k].items() + [('params', params[k])]))
+                        param_group = dict(params=params[k])
+                        param_group.update(info[k])
+                        optim_params.append(param_group)
             else:
                 optim_params.append({'params': params['res'] + params['bn']})
                 for k in params.keys():
                     if k not in ['res', 'bn'] and len(params[k]):
-                        optim_params.append(dict(info[k].items() + [('params', params[k])]))
+                        param_group = dict(params=params[k])
+                        param_group.update(info[k])
+                        optim_params.append(param_group)
 
             if 'bn_nowd' in optimizer:
                 optimizer.pop('bn_nowd')
