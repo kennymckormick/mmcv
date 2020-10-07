@@ -1,4 +1,6 @@
 """Modified from https://github.com/pytorch/pytorch."""
+import os
+
 import numpy as np
 import torch
 from torch.nn.modules.utils import _pair, _single, _triple
@@ -21,14 +23,27 @@ def _interpolate(name, dim, interpolate_mode):
             'Constant', value_t=torch.tensor([], dtype=torch.float32))
 
         if scales is None:
-            input_size = g.op('Shape', input)
-            input_size_beg = sym_help._slice_helper(
-                g, input_size, axes=[0], ends=[2], starts=[0])
-            output_size = g.op(
-                'Cast',
-                output_size,
-                to_i=sym_help.cast_pytorch_to_onnx['Long'])
-            output_size = g.op('Concat', input_size_beg, output_size, axis_i=0)
+            if 'ONNX_BACKEND' in os.environ and os.environ[
+                    'ONNX_BACKEND'] == 'TensorRT':
+                input_size = input.type().sizes()
+                # slice the first two dim
+                input_size = input_size[:2]
+                # convert output_size to int type
+                output_size = sym_help._maybe_get_const(output_size, 'is')
+                input_size.extend(output_size)
+                output_size = g.op(
+                    'Constant',
+                    value_t=torch.tensor(input_size, dtype=torch.int64))
+            else:
+                input_size = g.op('Shape', input)
+                input_size_beg = sym_help._slice_helper(
+                    g, input_size, axes=[0], ends=[2], starts=[0])
+                output_size = g.op(
+                    'Cast',
+                    output_size,
+                    to_i=sym_help.cast_pytorch_to_onnx['Long'])
+                output_size = g.op(
+                    'Concat', input_size_beg, output_size, axis_i=0)
             scales = g.op(
                 'Constant', value_t=torch.tensor([], dtype=torch.float32))
             return g.op(
@@ -305,6 +320,50 @@ def softmax(g, input, dim, dtype=None):
     return softmax
 
 
+def _adaptive_pool(name, type, tuple_fn, fn=None):
+
+    @parse_args('v', 'is')
+    def symbolic_fn(g, input, output_size):
+        if output_size == [1] * len(output_size) and type == 'AveragePool':
+            return g.op('GlobalAveragePool', input)
+        if not input.isCompleteTensor():
+            if output_size == [1] * len(output_size):
+                return g.op('GlobalMaxPool', input), None
+            raise NotImplementedError(
+                '[Adaptive pool]:input size not accessible')
+        dim = input.type().sizes()[2:]
+        if output_size == [1] * len(output_size) and type == 'MaxPool':
+            return g.op('GlobalMaxPool', input), None
+
+        # compute stride = floor(input_size / output_size)
+        s = [int(dim[i] / output_size[i]) for i in range(0, len(dim))]
+
+        # compute kernel_size = input_size - (output_size - 1) * stride
+        k = [dim[i] - (output_size[i] - 1) * s[i] for i in range(0, len(dim))]
+
+        # call max_poolxd_with_indices to get indices in the output
+        if type == 'MaxPool':
+            return fn(g, input, k, k, (0, ) * len(dim), (1, ) * len(dim),
+                      False)
+        output = g.op(
+            type,
+            input,
+            kernel_shape_i=tuple_fn(k),
+            strides_i=tuple_fn(s),
+            ceil_mode_i=False)
+        return output
+
+    return symbolic_fn
+
+
+adaptive_avg_pool1d = _adaptive_pool('adaptive_avg_pool1d', 'AveragePool',
+                                     _single)
+adaptive_avg_pool2d = _adaptive_pool('adaptive_avg_pool2d', 'AveragePool',
+                                     _pair)
+adaptive_avg_pool3d = _adaptive_pool('adaptive_avg_pool3d', 'AveragePool',
+                                     _triple)
+
+
 def register_extra_symbolics(opset=11):
     register_op('one_hot', one_hot, '', opset)
     register_op('im2col', im2col, '', opset)
@@ -317,6 +376,9 @@ def register_extra_symbolics(opset=11):
     register_op('avg_pool1d', avg_pool1d, '', opset)
     register_op('avg_pool2d', avg_pool2d, '', opset)
     register_op('avg_pool3d', avg_pool3d, '', opset)
+    register_op('adaptive_avg_pool1d', adaptive_avg_pool1d, '', opset)
+    register_op('adaptive_avg_pool2d', adaptive_avg_pool2d, '', opset)
+    register_op('adaptive_avg_pool3d', adaptive_avg_pool3d, '', opset)
     register_op('masked_select', masked_select, '', opset)
     register_op('upsample_nearest1d', upsample_nearest1d, '', opset)
     register_op('upsample_nearest2d', upsample_nearest2d, '', opset)

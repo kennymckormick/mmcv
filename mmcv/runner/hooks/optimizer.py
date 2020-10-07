@@ -1,5 +1,7 @@
 # Copyright (c) Open-MMLab. All rights reserved.
 import copy
+from collections import defaultdict
+from itertools import chain
 
 from torch.nn.utils import clip_grad
 
@@ -31,6 +33,7 @@ class OptimizerHook(Hook):
         runner.optimizer.step()
 
 
+@HOOKS.register_module()
 class Fp16OptimizerHook(OptimizerHook):
     """FP16 optimizer hook.
 
@@ -66,8 +69,19 @@ class Fp16OptimizerHook(OptimizerHook):
         2. Convert the main model from fp32 to fp16.
         """
         # keep a copy of fp32 weights
+        old_groups = runner.optimizer.param_groups
         runner.optimizer.param_groups = copy.deepcopy(
             runner.optimizer.param_groups)
+        state = defaultdict(dict)
+        p_map = {
+            old_p: p
+            for old_p, p in zip(
+                chain(*(g['params'] for g in old_groups)),
+                chain(*(g['params'] for g in runner.optimizer.param_groups)))
+        }
+        for k, v in runner.optimizer.state.items():
+            state[p_map[k]] = v
+        runner.optimizer.state = state
         # convert model to fp16
         wrap_fp16_model(runner.model)
 
@@ -112,7 +126,11 @@ class Fp16OptimizerHook(OptimizerHook):
             if param.grad is not None:
                 param.grad.div_(self.loss_scale)
         if self.grad_clip is not None:
-            self.clip_grads(fp32_weights)
+            grad_norm = self.clip_grads(fp32_weights)
+            if grad_norm is not None:
+                # Add grad norm to the logger
+                runner.log_buffer.update({'grad_norm': float(grad_norm)},
+                                         runner.outputs['num_samples'])
         # update fp32 params
         runner.optimizer.step()
         # copy fp32 params to the fp16 model

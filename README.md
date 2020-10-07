@@ -7,7 +7,7 @@
 ## Introduction
 
 MMCV is a foundational python library for computer vision research and supports many
-research projects in MMLAB as below:
+research projects as below:
 
 - [MMDetection](https://github.com/open-mmlab/mmdetection): Detection toolbox and benchmark
 - [MMDetection3D](https://github.com/open-mmlab/mmdetection3d): General 3D object detection toolbox and benchmark
@@ -38,6 +38,8 @@ There are two versions of MMCV:
 - **mmcv**: lite, without CUDA ops but all other features, similar to mmcv<1.0.0. It is useful when you do not need those CUDA ops.
 - **mmcv-full**: comprehensive, with full features and various CUDA ops out of box. It takes longer time to build.
 
+**Note**: Do not install both versions in the same environment, otherwise you may encounter errors like `ModuleNotFound`. You need to uninstall one before installing the other.
+
 ### Install with pip
 
 a. Install the lite version.
@@ -48,25 +50,43 @@ pip install mmcv
 
 b. Install the full version.
 
-We provide the pre-built mmcv package with different PyTorch and CUDA versions to simplify the building.
+Before installing mmcv-full, make sure that PyTorch has been successfully installed following the [official guide](https://pytorch.org/).
 
-<table class="docutils"><tbody><tr><th width="80"> CUDA </th><th valign="bottom" align="left" width="100">torch 1.5</th><th valign="bottom" align="left" width="100">torch 1.4</th><th valign="bottom" align="left" width="100">torch 1.3</th></tr>
-<tr><td align="left">10.2</td><td align="left"><details><summary> install </summary><pre><code>pip install mmcv-full==latest+torch1.5.0+cu102 -f https://openmmlab.oss-accelerate.aliyuncs.com/mmcv/dist/index.html
-</code></pre> </details> </td> <td align="left"> </td> <td align="left"> </td> </tr>
-<tr><td align="left">10.1</td><td align="left"><details><summary> install </summary><pre><code> pip install mmcv-full==latest+torch1.5.0+cu101 -f https://openmmlab.oss-accelerate.aliyuncs.com/mmcv/dist/index.html
-</code></pre> </details> </td> <td align="left"><details><summary> install </summary><pre><code>pip install mmcv-full==latest+torch1.4.0+cu101 -f https://openmmlab.oss-accelerate.aliyuncs.com/mmcv/dist/index.html
-</code></pre> </details> </td> <td align="left"><details><summary> install </summary><pre><code>pip install mmcv-full==latest+torch1.3.0+cu101 -f https://openmmlab.oss-accelerate.aliyuncs.com/mmcv/dist/index.html
-</code></pre> </details> </td></tr>
-<tr><td align="left">10.0</td><td align="left"> </td><td align="left"> </td> <td align="left"> </td> </tr>
-<tr><td align="left">9.2</td><td align="left"><details><summary> install </summary><pre><code> pip install mmcv-full==latest+torch1.5.0+cu92 -f https://openmmlab.oss-accelerate.aliyuncs.com/mmcv/dist/index.html
-</code></pre> </details> </td> <td align="left"><details><summary> install </summary><pre><code>pip install mmcv-full==latest+torch1.4.0+cu92 -f https://openmmlab.oss-accelerate.aliyuncs.com/mmcv/dist/index.html
-</code></pre> </details> </td> <td align="left"><details><summary> install </summary><pre><code>pip install mmcv-full==latest+torch1.3.0+cu92 -f https://openmmlab.oss-accelerate.aliyuncs.com/mmcv/dist/index.html
-</code></pre> </details> </td></tr>
-<tr><td align="left">cpu</td><td align="left"><details><summary> install </summary><pre><code> pip install mmcv-full==latest+torch1.5.0+cpu -f https://openmmlab.oss-accelerate.aliyuncs.com/mmcv/dist/index.html
-</code></pre> </details> </td> <td align="left"><details><summary> install </summary><pre><code>pip install mmcv-full==latest+torch1.4.0+cpu -f https://openmmlab.oss-accelerate.aliyuncs.com/mmcv/dist/index.html
-</code></pre> </details> </td> <td align="left"><details><summary> install </summary><pre><code>pip install mmcv-full==latest+torch1.3.0+cpu -f https://openmmlab.oss-accelerate.aliyuncs.com/mmcv/dist/index.html
-</code></pre> </details> </td> </tr>
-</tbody></table>
+We provide pre-built mmcv packages (recommended) with different PyTorch and CUDA versions to simplify the building.
+
+<table class="docutils">
+  <tbody>
+    <tr><th width="80"> CUDA </th><th valign="bottom" align="left" width="100">torch 1.6</th><th valign="bottom" align="left" width="100">torch 1.5</th><th valign="bottom" align="left" width="100">torch 1.4</th><th valign="bottom" align="left" width="100">torch 1.3</th></tr>
+    <tr>
+      <td align="left">10.2</td>
+      <td align="left"><details><summary> install </summary><pre><code>pip install mmcv-full==latest+torch1.6.0+cu102 -f https://download.openmmlab.com/mmcv/dist/index.html</code></pre> </details> </td>
+      <td align="left"><details><summary> install </summary><pre><code>pip install mmcv-full==latest+torch1.5.0+cu102 -f https://download.openmmlab.com/mmcv/dist/index.html</code></pre> </details> </td>
+      <td align="left"> </td>
+      <td align="left"> </td>
+    </tr>
+    <tr>
+      <td align="left">10.1</td>
+      <td align="left"><details><summary> install </summary><pre><code> pip install mmcv-full==latest+torch1.6.0+cu101 -f https://download.openmmlab.com/mmcv/dist/index.html</code></pre> </details> </td>
+      <td align="left"><details><summary> install </summary><pre><code> pip install mmcv-full==latest+torch1.5.0+cu101 -f https://download.openmmlab.com/mmcv/dist/index.html</code></pre> </details> </td>
+      <td align="left"><details><summary> install </summary><pre><code>pip install mmcv-full==latest+torch1.4.0+cu101 -f https://download.openmmlab.com/mmcv/dist/index.html</code></pre> </details> </td>
+      <td align="left"><details><summary> install </summary><pre><code>pip install mmcv-full==latest+torch1.3.0+cu101 -f https://download.openmmlab.com/mmcv/dist/index.html</code></pre> </details> </td>
+    </tr>
+    <tr>
+      <td align="left">9.2</td>
+      <td align="left"><details><summary> install </summary><pre><code> pip install mmcv-full==latest+torch1.6.0+cu92 -f https://download.openmmlab.com/mmcv/dist/index.html</code></pre> </details> </td>
+      <td align="left"><details><summary> install </summary><pre><code> pip install mmcv-full==latest+torch1.5.0+cu92 -f https://download.openmmlab.com/mmcv/dist/index.html</code></pre> </details> </td>
+      <td align="left"><details><summary> install </summary><pre><code>pip install mmcv-full==latest+torch1.4.0+cu92 -f https://download.openmmlab.com/mmcv/dist/index.html</code></pre> </details> </td>
+      <td align="left"><details><summary> install </summary><pre><code>pip install mmcv-full==latest+torch1.3.0+cu92 -f https://download.openmmlab.com/mmcv/dist/index.html</code></pre> </details> </td>
+    </tr>
+    <tr>
+      <td align="left">cpu</td>
+      <td align="left"><details><summary> install </summary><pre><code> pip install mmcv-full==latest+torch1.6.0+cpu -f https://download.openmmlab.com/mmcv/dist/index.html</code></pre> </details> </td>
+      <td align="left"><details><summary> install </summary><pre><code> pip install mmcv-full==latest+torch1.5.0+cpu -f https://download.openmmlab.com/mmcv/dist/index.html</code></pre> </details> </td>
+      <td align="left"><details><summary> install </summary><pre><code>pip install mmcv-full==latest+torch1.4.0+cpu -f https://download.openmmlab.com/mmcv/dist/index.html</code></pre> </details> </td>
+      <td align="left"><details><summary> install </summary><pre><code>pip install mmcv-full==latest+torch1.3.0+cpu -f https://download.openmmlab.com/mmcv/dist/index.html</code></pre> </details> </td>
+    </tr>
+  </tbody>
+</table>
 
 Another way is to compile locally by running
 
@@ -102,15 +122,32 @@ You can either
 If you are on macOS, add the following environment variables before the installing command.
 
 ```bash
-CC=lang CXX=clang++ CFLAGS='-stdlib=libc++'
+CC=clang CXX=clang++ CFLAGS='-stdlib=libc++'
 ```
 
 e.g.,
 
 ```bash
-CC=lang CXX=clang++ CFLAGS='-stdlib=libc++' MMCV_WITH_OPS=1 pip install -e .
+CC=clang CXX=clang++ CFLAGS='-stdlib=libc++' MMCV_WITH_OPS=1 pip install -e .
+```
+
+If you are on Windows10, set the following environment variable before the installing command.
+
+```bash
+set MMCV_WITH_OPS=1
+```
+
+e.g.,
+
+```bash
+set MMCV_WITH_OPS=1
+pip install -e .
 ```
 
 Note: If you would like to use `opencv-python-headless` instead of `opencv-python`,
 e.g., in a minimum container environment or servers without GUI,
 you can first install it before installing MMCV to skip the installation of `opencv-python`.
+
+### TroubleShooting
+
+If you meet issues when running or compiling mmcv, we list some common issues in [TROUBLESHOOTING.md](docs/trouble_shooting.md).

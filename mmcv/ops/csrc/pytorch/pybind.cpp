@@ -3,43 +3,43 @@
 std::string get_compiler_version();
 std::string get_compiling_cuda_version();
 
-int carafe_naive_forward(Tensor features, Tensor masks, Tensor output,
-                         int kernel_size, int group_size, int scale_factor);
+void carafe_naive_forward(Tensor features, Tensor masks, Tensor output,
+                          int kernel_size, int group_size, int scale_factor);
 
-int carafe_naive_backward(Tensor top_grad, Tensor features, Tensor masks,
-                          Tensor bottom_grad, Tensor mask_grad, int kernel_size,
-                          int group_size, int scale_factor);
+void carafe_naive_backward(Tensor top_grad, Tensor features, Tensor masks,
+                           Tensor bottom_grad, Tensor mask_grad,
+                           int kernel_size, int group_size, int scale_factor);
 
-int carafe_forward(Tensor features, Tensor masks, Tensor rfeatures,
-                   Tensor routput, Tensor rmasks, Tensor output,
-                   int kernel_size, int group_size, int scale_factor);
+void carafe_forward(Tensor features, Tensor masks, Tensor rfeatures,
+                    Tensor routput, Tensor rmasks, Tensor output,
+                    int kernel_size, int group_size, int scale_factor);
 
-int carafe_backward(Tensor top_grad, Tensor rfeatures, Tensor masks,
-                    Tensor rtop_grad, Tensor rbottom_grad_hs,
-                    Tensor rbottom_grad, Tensor rmask_grad, Tensor bottom_grad,
-                    Tensor mask_grad, int kernel_size, int group_size,
-                    int scale_factor);
+void carafe_backward(Tensor top_grad, Tensor rfeatures, Tensor masks,
+                     Tensor rtop_grad, Tensor rbottom_grad_hs,
+                     Tensor rbottom_grad, Tensor rmask_grad, Tensor bottom_grad,
+                     Tensor mask_grad, int kernel_size, int group_size,
+                     int scale_factor);
 
-int deform_conv_forward(Tensor input, Tensor weight, Tensor offset,
-                        Tensor output, Tensor columns, Tensor ones, int kW,
-                        int kH, int dW, int dH, int padW, int padH,
-                        int dilationW, int dilationH, int group,
-                        int deformable_group, int im2col_step);
+void deform_conv_forward(Tensor input, Tensor weight, Tensor offset,
+                         Tensor output, Tensor columns, Tensor ones, int kW,
+                         int kH, int dW, int dH, int padW, int padH,
+                         int dilationW, int dilationH, int group,
+                         int deformable_group, int im2col_step);
 
-int deform_conv_backward_input(Tensor input, Tensor offset, Tensor gradOutput,
-                               Tensor gradInput, Tensor gradOffset,
-                               Tensor weight, Tensor columns, int kW, int kH,
-                               int dW, int dH, int padW, int padH,
-                               int dilationW, int dilationH, int group,
-                               int deformable_group, int im2col_step);
+void deform_conv_backward_input(Tensor input, Tensor offset, Tensor gradOutput,
+                                Tensor gradInput, Tensor gradOffset,
+                                Tensor weight, Tensor columns, int kW, int kH,
+                                int dW, int dH, int padW, int padH,
+                                int dilationW, int dilationH, int group,
+                                int deformable_group, int im2col_step);
 
-int deform_conv_backward_parameters(Tensor input, Tensor offset,
-                                    Tensor gradOutput, Tensor gradWeight,
-                                    Tensor columns, Tensor ones, int kW, int kH,
-                                    int dW, int dH, int padW, int padH,
-                                    int dilationW, int dilationH, int group,
-                                    int deformable_group, float scale,
-                                    int im2col_step);
+void deform_conv_backward_parameters(Tensor input, Tensor offset,
+                                     Tensor gradOutput, Tensor gradWeight,
+                                     Tensor columns, Tensor ones, int kW,
+                                     int kH, int dW, int dH, int padW, int padH,
+                                     int dilationW, int dilationH, int group,
+                                     int deformable_group, float scale,
+                                     int im2col_step);
 
 void deform_roi_pool_forward(Tensor input, Tensor rois, Tensor offset,
                              Tensor output, int pooled_height, int pooled_width,
@@ -52,39 +52,39 @@ void deform_roi_pool_backward(Tensor grad_output, Tensor input, Tensor rois,
                               int pooled_width, float spatial_scale,
                               int sampling_ratio, float gamma);
 
-int sigmoid_focal_loss_forward(Tensor input, Tensor target, Tensor weight,
-                               Tensor output, float gamma, float alpha);
+void sigmoid_focal_loss_forward(Tensor input, Tensor target, Tensor weight,
+                                Tensor output, float gamma, float alpha);
 
-int sigmoid_focal_loss_backward(Tensor input, Tensor target, Tensor weight,
-                                Tensor grad_input, float gamma, float alpha);
+void sigmoid_focal_loss_backward(Tensor input, Tensor target, Tensor weight,
+                                 Tensor grad_input, float gamma, float alpha);
 
-int softmax_focal_loss_forward(Tensor input, Tensor target, Tensor weight,
-                               Tensor output, float gamma, float alpha);
+void softmax_focal_loss_forward(Tensor input, Tensor target, Tensor weight,
+                                Tensor output, float gamma, float alpha);
 
-int softmax_focal_loss_backward(Tensor input, Tensor target, Tensor weight,
-                                Tensor buff, Tensor grad_input, float gamma,
-                                float alpha);
+void softmax_focal_loss_backward(Tensor input, Tensor target, Tensor weight,
+                                 Tensor buff, Tensor grad_input, float gamma,
+                                 float alpha);
 
 void bbox_overlaps(const Tensor bboxes1, const Tensor bboxes2, Tensor ious,
                    const int mode, const bool aligned, const int offset);
 
-int masked_im2col_forward(const Tensor im, const Tensor mask_h_idx,
-                          const Tensor mask_w_idx, Tensor col,
-                          const int kernel_h, const int kernel_w,
-                          const int pad_h, const int pad_w);
+void masked_im2col_forward(const Tensor im, const Tensor mask_h_idx,
+                           const Tensor mask_w_idx, Tensor col,
+                           const int kernel_h, const int kernel_w,
+                           const int pad_h, const int pad_w);
 
-int masked_col2im_forward(const Tensor col, const Tensor mask_h_idx,
-                          const Tensor mask_w_idx, Tensor im, int height,
-                          int width, int channels);
+void masked_col2im_forward(const Tensor col, const Tensor mask_h_idx,
+                           const Tensor mask_w_idx, Tensor im, int height,
+                           int width, int channels);
 
-int modulated_deform_conv_forward(
+void modulated_deform_conv_forward(
     Tensor input, Tensor weight, Tensor bias, Tensor ones, Tensor offset,
     Tensor mask, Tensor output, Tensor columns, int kernel_h, int kernel_w,
     const int stride_h, const int stride_w, const int pad_h, const int pad_w,
     const int dilation_h, const int dilation_w, const int group,
     const int deformable_group, const bool with_bias);
 
-int modulated_deform_conv_backward(
+void modulated_deform_conv_backward(
     Tensor input, Tensor weight, Tensor bias, Tensor ones, Tensor offset,
     Tensor mask, Tensor columns, Tensor grad_input, Tensor grad_weight,
     Tensor grad_bias, Tensor grad_offset, Tensor grad_mask, Tensor grad_output,
@@ -99,31 +99,31 @@ Tensor softnms(Tensor boxes, Tensor scores, Tensor dets, float iou_threshold,
 
 std::vector<std::vector<int> > nms_match(Tensor dets, float iou_threshold);
 
-int roi_align_forward(Tensor input, Tensor rois, Tensor output, Tensor argmax_y,
-                      Tensor argmax_x, int aligned_height, int aligned_width,
-                      float spatial_scale, int sampling_ratio, int pool_mode,
-                      bool aligned);
-
-int roi_align_backward(Tensor grad_output, Tensor rois, Tensor argmax_y,
-                       Tensor argmax_x, Tensor grad_input, int aligned_height,
+void roi_align_forward(Tensor input, Tensor rois, Tensor output,
+                       Tensor argmax_y, Tensor argmax_x, int aligned_height,
                        int aligned_width, float spatial_scale,
                        int sampling_ratio, int pool_mode, bool aligned);
 
-int roi_pool_forward(Tensor input, Tensor rois, Tensor output, Tensor argmax,
-                     int pooled_height, int pooled_width, float spatial_scale);
+void roi_align_backward(Tensor grad_output, Tensor rois, Tensor argmax_y,
+                        Tensor argmax_x, Tensor grad_input, int aligned_height,
+                        int aligned_width, float spatial_scale,
+                        int sampling_ratio, int pool_mode, bool aligned);
 
-int roi_pool_backward(Tensor grad_output, Tensor rois, Tensor argmax,
-                      Tensor grad_input, int pooled_height, int pooled_width,
-                      float spatial_scale);
+void roi_pool_forward(Tensor input, Tensor rois, Tensor output, Tensor argmax,
+                      int pooled_height, int pooled_width, float spatial_scale);
+
+void roi_pool_backward(Tensor grad_output, Tensor rois, Tensor argmax,
+                       Tensor grad_input, int pooled_height, int pooled_width,
+                       float spatial_scale);
 
 void sync_bn_forward_mean(const Tensor input, Tensor mean);
 
 void sync_bn_forward_var(const Tensor input, const Tensor mean, Tensor var);
 
 void sync_bn_forward_output(const Tensor input, const Tensor mean,
-                            const Tensor var, Tensor running_mean,
-                            Tensor running_var, const Tensor weight,
-                            const Tensor bias, Tensor norm, Tensor std,
+                            const Tensor var, const Tensor weight,
+                            const Tensor bias, Tensor running_mean,
+                            Tensor running_var, Tensor norm, Tensor std,
                             Tensor output, float eps, float momentum,
                             int group_size);
 
@@ -154,6 +154,10 @@ void psamask_backward(Tensor grad_output, const Tensor grad_input,
                       const int psa_type, const int num_, const int h_feature,
                       const int w_feature, const int h_mask, const int w_mask,
                       const int half_h_mask, const int half_w_mask);
+
+void tin_shift_forward(Tensor input, Tensor shift, Tensor output);
+
+void tin_shift_backward(Tensor grad_output, Tensor shift, Tensor grad_input);
 
 Tensor bottom_pool_forward(Tensor input);
 
@@ -299,9 +303,9 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
         py::arg("input"), py::arg("mean"), py::arg("var"));
   m.def("sync_bn_forward_output", &sync_bn_forward_output,
         "sync_bn forward_output", py::arg("input"), py::arg("mean"),
-        py::arg("var"), py::arg("running_mean"), py::arg("running_var"),
-        py::arg("weight"), py::arg("bias"), py::arg("norm"), py::arg("std"),
-        py::arg("output"), py::arg("eps"), py::arg("momentum"),
+        py::arg("var"), py::arg("weight"), py::arg("bias"),
+        py::arg("running_mean"), py::arg("running_var"), py::arg("norm"),
+        py::arg("std"), py::arg("output"), py::arg("eps"), py::arg("momentum"),
         py::arg("group_size"));
   m.def("sync_bn_backward_param", &sync_bn_backward_param,
         "sync_bn backward_param", py::arg("grad_output"), py::arg("norm"),
@@ -329,6 +333,10 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
         py::arg("num_"), py::arg("h_feature"), py::arg("w_feature"),
         py::arg("h_mask"), py::arg("w_mask"), py::arg("half_h_mask"),
         py::arg("half_w_mask"));
+  m.def("tin_shift_forward", &tin_shift_forward, "tin_shift forward",
+        py::arg("input"), py::arg("shift"), py::arg("output"));
+  m.def("tin_shift_backward", &tin_shift_backward, "tin_shift backward",
+        py::arg("grad_output"), py::arg("shift"), py::arg("grad_input"));
   m.def("bottom_pool_forward", &bottom_pool_forward, "Bottom Pool Forward",
         py::arg("input"), py::call_guard<py::gil_scoped_release>());
   m.def("bottom_pool_backward", &bottom_pool_backward, "Bottom Pool Backward",

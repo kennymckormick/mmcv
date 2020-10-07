@@ -1,12 +1,16 @@
 # Copyright (c) Open-MMLab. All rights reserved.
 import os.path as osp
+import platform
+import shutil
 import time
+import warnings
 
 import torch
 from torch.optim import Optimizer
 
 import mmcv
 from .base_runner import BaseRunner
+from .builder import RUNNERS
 from .checkpoint import save_checkpoint
 from .hooks import IterTimerHook
 from .utils import get_host_info
@@ -39,6 +43,7 @@ class IterLoader:
         return len(self._dataloader)
 
 
+@RUNNERS.register_module()
 class IterBasedRunner(BaseRunner):
     """Iteration-based Runner.
 
@@ -77,7 +82,7 @@ class IterBasedRunner(BaseRunner):
         self.call_hook('after_val_iter')
         self._inner_iter += 1
 
-    def run(self, data_loaders, workflow, max_iters, **kwargs):
+    def run(self, data_loaders, workflow, max_iters=None, **kwargs):
         """Start running.
 
         Args:
@@ -87,24 +92,30 @@ class IterBasedRunner(BaseRunner):
                 running order and iterations. E.g, [('train', 10000),
                 ('val', 1000)] means running 10000 iterations for training and
                 1000 iterations for validation, iteratively.
-            max_iters (int): Total training iterations.
         """
         assert isinstance(data_loaders, list)
         assert mmcv.is_list_of(workflow, tuple)
         assert len(data_loaders) == len(workflow)
+        if max_iters is not None:
+            warnings.warn(
+                'setting max_iters in run is deprecated, '
+                'please set max_iters in runner_config', DeprecationWarning)
+            self._max_iters = max_iters
+        assert self._max_iters is not None, (
+            'max_iters must be specified during instantiation')
 
-        self._max_iters = max_iters
         work_dir = self.work_dir if self.work_dir is not None else 'NONE'
         self.logger.info('Start running, host: %s, work_dir: %s',
                          get_host_info(), work_dir)
-        self.logger.info('workflow: %s, max: %d iters', workflow, max_iters)
+        self.logger.info('workflow: %s, max: %d iters', workflow,
+                         self._max_iters)
         self.call_hook('before_run')
 
         iter_loaders = [IterLoader(x) for x in data_loaders]
 
         self.call_hook('before_epoch')
 
-        while self.iter < max_iters:
+        while self.iter < self._max_iters:
             for i, flow in enumerate(workflow):
                 self._inner_iter = 0
                 mode, iters = flow
@@ -114,7 +125,7 @@ class IterBasedRunner(BaseRunner):
                         format(mode))
                 iter_runner = getattr(self, mode)
                 for _ in range(iters):
-                    if mode == 'train' and self.iter >= max_iters:
+                    if mode == 'train' and self.iter >= self._max_iters:
                         break
                     iter_runner(iter_loaders[i], **kwargs)
 
@@ -183,7 +194,8 @@ class IterBasedRunner(BaseRunner):
         else:
             raise TypeError(
                 f'meta should be a dict or None, but got {type(meta)}')
-        meta.update(self.meta)
+        if self.meta is not None:
+            meta.update(self.meta)
 
         filename = filename_tmpl.format(self.iter + 1)
         filepath = osp.join(out_dir, filename)
@@ -192,7 +204,11 @@ class IterBasedRunner(BaseRunner):
         # in some environments, `os.symlink` is not supported, you may need to
         # set `create_symlink` to False
         if create_symlink:
-            mmcv.symlink(filename, osp.join(out_dir, 'latest.pth'))
+            dst_file = osp.join(out_dir, 'latest.pth')
+            if platform.system() != 'Windows':
+                mmcv.symlink(filename, dst_file)
+            else:
+                shutil.copy(filename, dst_file)
 
     def register_training_hooks(self,
                                 lr_config,
@@ -221,5 +237,6 @@ class IterBasedRunner(BaseRunner):
         self.register_checkpoint_hook(checkpoint_config)
         self.register_hook(IterTimerHook())
         if log_config is not None:
-            log_config.setdefault('by_epoch', False)
+            for info in log_config['hooks']:
+                info.setdefault('by_epoch', False)
         self.register_logger_hooks(log_config)
