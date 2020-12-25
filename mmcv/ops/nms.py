@@ -6,7 +6,8 @@ import torch
 from mmcv.utils import deprecated_api_warning
 from ..utils import ext_loader
 
-ext_module = ext_loader.load_ext('_ext', ['nms', 'softnms', 'nms_match'])
+ext_module = ext_loader.load_ext(
+    '_ext', ['nms', 'softnms', 'nms_match', 'nms_rotated'])
 
 
 # This function is modified from: https://github.com/pytorch/vision/
@@ -21,7 +22,6 @@ class NMSop(torch.autograd.Function):
     @staticmethod
     def symbolic(g, bboxes, scores, iou_threshold, offset):
         from torch.onnx.symbolic_opset9 import select, squeeze, unsqueeze
-
         boxes = unsqueeze(g, bboxes, 0)
         scores = unsqueeze(g, unsqueeze(g, scores, 0), 0)
         max_output_per_class = g.op(
@@ -37,6 +37,41 @@ class NMSop(torch.autograd.Function):
                 g, nms_out, 1,
                 g.op('Constant', value_t=torch.tensor([2], dtype=torch.long))),
             1)
+
+
+class SoftNMSop(torch.autograd.Function):
+
+    @staticmethod
+    def forward(ctx, boxes, scores, iou_threshold, sigma, min_score, method,
+                offset):
+        dets = boxes.new_empty((boxes.size(0), 5), device='cpu')
+        inds = ext_module.softnms(
+            boxes.cpu(),
+            scores.cpu(),
+            dets.cpu(),
+            iou_threshold=float(iou_threshold),
+            sigma=float(sigma),
+            min_score=float(min_score),
+            method=int(method),
+            offset=int(offset))
+        return dets, inds
+
+    @staticmethod
+    def symbolic(g, boxes, scores, iou_threshold, sigma, min_score, method,
+                 offset):
+        from packaging import version
+        assert version.parse(torch.__version__) >= version.parse('1.7.0')
+        nms_out = g.op(
+            'mmcv::SoftNonMaxSuppression',
+            boxes,
+            scores,
+            iou_threshold_f=float(iou_threshold),
+            sigma_f=float(sigma),
+            min_score_f=float(min_score),
+            method_i=int(method),
+            offset_i=int(offset),
+            outputs=2)
+        return nms_out
 
 
 @deprecated_api_warning({'iou_thr': 'iou_threshold'})
@@ -111,6 +146,9 @@ def nms(boxes, scores, iou_threshold, offset=0):
             # ONNX only support offset == 1
             boxes[:, -2:] -= 1
         inds = NMSop.apply(boxes, scores, iou_threshold, offset)
+        if torch.onnx.is_in_onnx_export() and offset == 0:
+            # ONNX only support offset == 1
+            boxes[:, -2:] += 1
     dets = torch.cat((boxes[inds], scores[inds].reshape(-1, 1)), dim=1)
     if is_numpy:
         dets = dets.cpu().numpy()
@@ -188,17 +226,12 @@ def soft_nms(boxes,
         dets, inds, num_out = ext_module.softnms(*indata_list, **indata_dict)
         inds = inds[:num_out]
     else:
-        dets = boxes.new_empty((boxes.size(0), 5), device='cpu')
-        inds = ext_module.softnms(
-            boxes.cpu(),
-            scores.cpu(),
-            dets.cpu(),
-            iou_threshold=float(iou_threshold),
-            sigma=float(sigma),
-            min_score=float(min_score),
-            method=method_dict[method],
-            offset=int(offset))
+        dets, inds = SoftNMSop.apply(boxes.cpu(), scores.cpu(),
+                                     float(iou_threshold), float(sigma),
+                                     float(min_score), method_dict[method],
+                                     int(offset))
     dets = dets[:inds.size(0)]
+
     if is_numpy:
         dets = dets.cpu().numpy()
         inds = inds.cpu().numpy()
@@ -245,14 +278,14 @@ def batched_nms(boxes, scores, idxs, nms_cfg, class_agnostic=False):
         boxes_for_nms = boxes
     else:
         max_coordinate = boxes.max()
-        offsets = idxs.to(boxes) * (max_coordinate + 1)
+        offsets = idxs.to(boxes) * (max_coordinate + torch.tensor(1).to(boxes))
         boxes_for_nms = boxes + offsets[:, None]
 
     nms_type = nms_cfg_.pop('type', 'nms')
     nms_op = eval(nms_type)
 
     split_thr = nms_cfg_.pop('split_thr', 10000)
-    if len(boxes_for_nms) < split_thr:
+    if boxes_for_nms.shape[0] < split_thr:
         dets, keep = nms_op(boxes_for_nms, scores, **nms_cfg_)
         boxes = boxes[keep]
         scores = dets[:, -1]
@@ -302,3 +335,50 @@ def nms_match(dets, iou_threshold):
         return [dets.new_tensor(m, dtype=torch.long) for m in matched]
     else:
         return [np.array(m, dtype=np.int) for m in matched]
+
+
+def nms_rotated(dets, scores, iou_threshold, labels=None):
+    """Performs non-maximum suppression (NMS) on the rotated boxes according to
+    their intersection-over-union (IoU).
+
+    Rotated NMS iteratively removes lower scoring rotated boxes which have an
+    IoU greater than iou_threshold with another (higher scoring) rotated box.
+
+    Args:
+        boxes (Tensor):  Rotated boxes in shape (N, 5). They are expected to \
+            be in (x_ctr, y_ctr, width, height, angle_radian) format.
+        scores (Tensor): scores in shape (N, ).
+        iou_threshold (float): IoU thresh for NMS.
+        labels (Tensor): boxes's label in shape (N,).
+
+    Returns:
+        tuple: kept dets(boxes and scores) and indice, which is always the \
+            same data type as the input.
+    """
+    if dets.shape[0] == 0:
+        return dets, None
+    multi_label = labels is not None
+    if multi_label:
+        dets_wl = torch.cat((dets, labels.unsqueeze(1)), 1)
+    else:
+        dets_wl = dets
+    _, order = scores.sort(0, descending=True)
+    dets_sorted = dets_wl.index_select(0, order)
+
+    if torch.__version__ == 'parrots':
+        select = torch.zeros((dets.shape[0]),
+                             dtype=torch.int64).to(dets.device)
+        ext_module.nms_rotated(
+            dets_wl,
+            scores,
+            dets_sorted,
+            select,
+            iou_threshold=iou_threshold,
+            multi_label=multi_label)
+        keep_inds = order.masked_select(select == 1)
+    else:
+        keep_inds = ext_module.nms_rotated(dets_wl, scores, order, dets_sorted,
+                                           iou_threshold, multi_label)
+    dets = torch.cat((dets[keep_inds], scores[keep_inds].reshape(-1, 1)),
+                     dim=1)
+    return dets, keep_inds

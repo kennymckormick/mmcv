@@ -1,7 +1,9 @@
 # Copyright (c) Open-MMLab. All rights reserved.
 import argparse
 import json
+import os
 import os.path as osp
+import shutil
 import tempfile
 
 import pytest
@@ -140,6 +142,19 @@ def test_fromfile():
         assert cfg.text == osp.abspath(osp.expanduser(cfg_file)) + '\n' + \
             open(cfg_file, 'r').read()
 
+    # test custom_imports for Config.fromfile
+    cfg_file = osp.join(data_path, 'config', 'q.py')
+    imported_file = osp.join(data_path, 'config', 'r.py')
+    target_pkg = osp.join(osp.dirname(__file__), 'r.py')
+
+    # Since the imported config will be regarded as a tmp file
+    # it should be copied to the directory at the same level
+    shutil.copy(imported_file, target_pkg)
+    Config.fromfile(cfg_file, import_custom_modules=True)
+
+    assert os.environ.pop('TEST_VALUE') == 'test'
+    os.remove(target_pkg)
+
     with pytest.raises(FileNotFoundError):
         Config.fromfile('no_such_file.py')
     with pytest.raises(IOError):
@@ -203,6 +218,24 @@ def test_merge_from_dict():
     cfg.merge_from_dict(input_options)
     assert cfg.item2 == dict(a=1, b=0.1)
     assert cfg.item3 is False
+
+    cfg_file = osp.join(data_path, 'config/s.py')
+    cfg = Config.fromfile(cfg_file)
+
+    # Allow list keys
+    input_options = {'item.0.a': 1, 'item.1.b': 1}
+    cfg.merge_from_dict(input_options, allow_list_keys=True)
+    assert cfg.item == [{'a': 1}, {'b': 1, 'c': 0}]
+
+    # allow_list_keys is False
+    input_options = {'item.0.a': 1, 'item.1.b': 1}
+    with pytest.raises(TypeError):
+        cfg.merge_from_dict(input_options, allow_list_keys=False)
+
+    # Overflowed index number
+    input_options = {'item.2.a': 1}
+    with pytest.raises(KeyError):
+        cfg.merge_from_dict(input_options, allow_list_keys=True)
 
 
 def test_merge_delete():
@@ -314,11 +347,23 @@ def test_dict_action():
     parser = argparse.ArgumentParser(description='Train a detector')
     parser.add_argument(
         '--options', nargs='+', action=DictAction, help='custom options')
+    # Nested brackets
+    args = parser.parse_args(
+        ['--options', 'item2.a=a,b', 'item2.b=[(a,b), [1,2], false]'])
+    out_dict = {'item2.a': ['a', 'b'], 'item2.b': [('a', 'b'), [1, 2], False]}
+    assert args.options == out_dict
+    # Single Nested brackets
+    args = parser.parse_args(['--options', 'item2.a=[[1]]'])
+    out_dict = {'item2.a': [[1]]}
+    assert args.options == out_dict
+    # Imbalance bracket
+    with pytest.raises(AssertionError):
+        parser.parse_args(['--options', 'item2.a=[(a,b), [1,2], false'])
+    # Normal values
     args = parser.parse_args(
         ['--options', 'item2.a=1', 'item2.b=0.1', 'item2.c=x', 'item3=false'])
     out_dict = {'item2.a': 1, 'item2.b': 0.1, 'item2.c': 'x', 'item3': False}
     assert args.options == out_dict
-
     cfg_file = osp.join(data_path, 'config/a.py')
     cfg = Config.fromfile(cfg_file)
     cfg.merge_from_dict(args.options)

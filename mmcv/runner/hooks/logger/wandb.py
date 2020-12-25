@@ -1,6 +1,4 @@
 # Copyright (c) Open-MMLab. All rights reserved.
-import numbers
-
 from ...dist_utils import master_only
 from ..hook import HOOKS
 from .base import LoggerHook
@@ -14,11 +12,13 @@ class WandbLoggerHook(LoggerHook):
                  interval=10,
                  ignore_last=True,
                  reset_flag=True,
+                 commit=True,
                  by_epoch=True):
         super(WandbLoggerHook, self).__init__(interval, ignore_last,
                                               reset_flag, by_epoch)
         self.import_wandb()
         self.init_kwargs = init_kwargs
+        self.commit = commit
 
     def import_wandb(self):
         try:
@@ -39,17 +39,10 @@ class WandbLoggerHook(LoggerHook):
 
     @master_only
     def log(self, runner):
-        metrics = {}
-        for var, val in runner.log_buffer.output.items():
-            if var in ['time', 'data_time']:
-                continue
-            tag = f'{var}/{runner.mode}'
-            if isinstance(val, numbers.Number):
-                metrics[tag] = val
-        metrics['learning_rate'] = runner.current_lr()[0]
-        metrics['momentum'] = runner.current_momentum()[0]
-        if metrics:
-            self.wandb.log(metrics, step=runner.iter)
+        tags = self.get_loggable_tags(runner)
+        if tags:
+            self.wandb.log(
+                tags, step=self.get_iter(runner), commit=self.commit)
 
     @master_only
     def after_run(self, runner):
